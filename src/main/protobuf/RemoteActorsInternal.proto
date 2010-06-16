@@ -1,0 +1,19 @@
+package gsoc_scala;
+
+message PBufNode {
+  required string address = 1;
+  required int32  port    = 2;
+}
+
+message PBufLocator {
+  required PBufNode node = 1;
+  required string   name = 2;
+}
+
+message PBufNamedSend {
+  required PBufLocator senderLoc   = 1;
+  required PBufLocator receiverLoc = 2;
+  optional bytes       metaData    = 3;
+  required bytes       data        = 4;
+  required string      session     = 5;
+}
