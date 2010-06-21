@@ -18,7 +18,7 @@ object Test {
 object A extends Actor {
   case class SimpleMessage(var num: Double, var str: Option[String]) extends AvroRecord
   def act() {
-    alive(9100, new SingleClassSpecificAvroSerializer[SimpleMessage](RemoteActor.classLoader))
+    alive(9100, new SingleClassSpecificAvroSerializer[SimpleMessage](RemoteActor.classLoader), serviceFactory = NioServiceFactory)
     register('actorA, self)
     println("Actor A started...")
     react {
@@ -36,7 +36,7 @@ object B extends Actor {
   case class SimpleMessage(var num: Int, var str: String, var extra: String) extends AvroRecord
   def act() {
     println("Actor B started...")
-    val aActor = select(Node("127.0.0.1", 9100), 'actorA, new SingleClassSpecificAvroSerializer[SimpleMessage](RemoteActor.classLoader))
+    val aActor = select(Node("127.0.0.1", 9100), 'actorA, new SingleClassSpecificAvroSerializer[SimpleMessage](RemoteActor.classLoader), serviceFactory = NioServiceFactory)
     aActor ! SimpleMessage(10, "HELLO", "IGNORE")
     aActor ! SimpleMessage(1000, "WORLD", "ME")
   }

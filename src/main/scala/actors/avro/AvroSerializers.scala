@@ -144,6 +144,11 @@ class MultiClassSpecificAvroSerializer(cl: ClassLoader) extends BasicAvroSeriali
 
 }
 
+object SingleClassSpecificAvroSerializer {
+  /** ResolvingDecoder.resolve is NOT threadsafe... */
+  val resolvingDecoderLock = new Object
+}
+
 class SingleClassSpecificAvroSerializer[R <: SpecificRecord](cl: ClassLoader)(implicit m: Manifest[R]) extends BasicAvroSerializer(cl) {
 
   override def uniqueId = 2804297980L
@@ -152,36 +157,26 @@ class SingleClassSpecificAvroSerializer[R <: SpecificRecord](cl: ClassLoader)(im
   private val schema = RecordClass.newInstance.getSchema
   private var cachedResolverObj: AnyRef = _
 
-  private def writeSchema(output: DataOutputStream) {
-    val schemaJson = schema.toString.getBytes
-    output.writeInt(schemaJson.length)
-    output.write(schemaJson, 0, schemaJson.length)
-    output.flush()
+  case object SendMySchema
+  case object ExpectOtherSchema
+
+  override def initialState: Option[Any] = Some(SendMySchema)
+
+  override def nextHandshakeMessage = {
+    case SendMySchema => (ExpectOtherSchema, Some(schema.toString))
+    case Resolved     => (Resolved, None)
   }
 
-  private def readSchema(input: DataInputStream): Schema = {
-    val size = input.readInt()
-    val bytes = new Array[Byte](size) 
-    input.read(bytes, 0, size)
-    Schema.parse(new String(bytes))
-  }
-
-  // 1) write my schema
-  // 2) read server's schema
-  override def doClientHandshake(input: DataInputStream, output: DataOutputStream, node: Node) {
-    writeSchema(output)
-    val serverSchema = readSchema(input)
-    println("Client got server schema: " + serverSchema)
-    cachedResolverObj = ResolvingDecoder.resolve(serverSchema, schema) // The server is the writer, I am the reader 
-  }
-  
-  // 1) write my schema
-  // 2) read client's schema
-  override def doServerHandshake(input: DataInputStream, output: DataOutputStream, node: Node) {
-    writeSchema(output)
-    val clientSchema = readSchema(input)
-    println("Server got client schema: " + clientSchema)
-    cachedResolverObj = ResolvingDecoder.resolve(clientSchema, schema) // The client is the writer, I am the reader
+  override def handleHandshakeMessage = {
+    case (ExpectOtherSchema, otherSchemaJson: String) =>
+      println("trying to resolve schema: " + otherSchemaJson)
+      val otherSchema = Schema.parse(otherSchemaJson)
+      println("parsed other schema")
+      SingleClassSpecificAvroSerializer.resolvingDecoderLock.synchronized {
+        cachedResolverObj = ResolvingDecoder.resolve(otherSchema, schema)
+      }
+      println("resolved other schema")
+      Resolved
   }
 
   override def serialize(message: AnyRef): Array[Byte] = message.getClass match {
@@ -192,6 +187,8 @@ class SingleClassSpecificAvroSerializer[R <: SpecificRecord](cl: ClassLoader)(im
   }
 
   private def fromBytesResolving(message: Array[Byte]): R = {
+    if (cachedResolverObj eq null)
+      throw new Exception("serializer has not been initialized with handshake")
     val newInstance = RecordClass.newInstance
     val reader = new ScalaSpecificDatumReader[R](newInstance.getSchema)
     val decoderFactory = new DecoderFactory
