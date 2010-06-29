@@ -1,8 +1,8 @@
 SCALAC=/home/stephentu/scala-gsoc/build/pack/bin/scalac
 SCALA=/home/stephentu/scala-gsoc/build/pack/bin/scala
 FILES=clients.scala server.scala
-#FLAGS=--numclients=200 --numreqperclient=2000
-FLAGS=--nio --numclients=200 --numreqperclient=2000
+#FLAGS=--numclients=300 --numreqperclient=1000
+FLAGS=--nio --numclients=300 --numreqperclient=1000
 
 compile:
 	mkdir -p classes

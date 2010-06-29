@@ -9,8 +9,17 @@ case class Stop()
 
 object Server {
   def main(args: Array[String]) {
+    def containsOpt(opt: String) = args.contains(opt)
+    val serviceFactory = 
+      if (containsOpt("--nio")) {
+        println("Server using NIO")
+        NioServiceFactory 
+      } else {
+        println("Server using TCP")
+        TcpServiceFactory
+      }
     actor {
-      alive(9000)
+      alive(9000, serviceFactory = serviceFactory)
       register('server, self)
       loop {
         react {

@@ -50,8 +50,14 @@ object Clients {
     def parseOpt(opt: String) = args.filter(_.startsWith(opt)).head.substring(opt.size).toInt
     val numActors = parseOpt("--numclients=") 
     val numReqsPerActor = parseOpt("--numreqperclient=")
-    val serviceFactory = if (containsOpt("--nio"))
-      NioServiceFactory else TcpServiceFactory
+    val serviceFactory = 
+      if (containsOpt("--nio")) {
+        println("Clients using NIO")
+        NioServiceFactory 
+      } else {
+        println("Clients using TCP")
+        TcpServiceFactory
+      }
     val actors = (1 to numActors).map(i => new Client(i, numReqsPerActor, serviceFactory, numActors))
     val startTime = System.currentTimeMillis
     actors.foreach(_.start)
