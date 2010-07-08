@@ -55,7 +55,11 @@ object SimpleTestClient {
     val numMsgsPerConn = parseOpt("--nummsgsperconn=") 
     val numRuns = parseOpt("--numruns=") 
 
+    val startTime = System.currentTimeMillis
     val sockets = (1 to numConnections).map(i => new Socket("127.0.0.1", 9000))
+    val endTime = System.currentTimeMillis
+    val esp = endTime - startTime
+    println("Took " + esp + " ms to make " + numConnections + " connections")
     val conns = sockets.map(sock => (sock.getInputStream, sock.getOutputStream))
 
     (1 to numRuns).foreach(runId => {
