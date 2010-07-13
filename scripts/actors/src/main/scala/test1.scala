@@ -1,8 +1,7 @@
-import actors.avro._
+import remote_actors.avro._
 
 import java.io._
 
-import scala.actors.remote.JavaSerializer
 import scala.reflect.Manifest
 
 import org.apache.avro.{ io, specific, Schema }
@@ -18,17 +17,17 @@ import RemoteActor._
 
 case class SimpleMessage(var message: String) extends AvroRecord
 
-object Test {
+object Test1 {
   def main(args: Array[String]) {
     Debug.level = 3
-    A.start
-    B.start
+    Test1_A.start
+    Test1_B.start
   }
 }
 
-object A extends Actor {
+object Test1_A extends Actor {
   def act() {
-    alive(9100, new MultiClassSpecificAvroSerializer(RemoteActor.classLoader))
+    alive(9100)
     register('actorA, self)
     println("Actor A started...")
     react {
@@ -44,10 +43,10 @@ object A extends Actor {
   }
 }
 
-object B extends Actor {
+object Test1_B extends Actor {
   def act() {
     println("Actor B started...")
-    val aActor = select(Node("127.0.0.1", 9100), 'actorA, new MultiClassSpecificAvroSerializer(RemoteActor.classLoader))
+    val aActor = select(Node("127.0.0.1", 9100), 'actorA, new MultiClassSpecificAvroSerializer)
     aActor ! SimpleMessage("Hello, world")
     react {
       case SimpleMessage(m) =>

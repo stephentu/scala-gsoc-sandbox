@@ -1,4 +1,4 @@
-package actors.protobuf
+package remote_actors.protobuf
 
 import java.io._
 
@@ -52,7 +52,7 @@ object PBufInternalConverters {
 }
 
 
-class ProtobufSerializer(cl: ClassLoader) extends JavaSerializer(cl) {
+class ProtobufSerializer extends IdResolvingSerializer {
   import PBufInternalConverters._
   private val MessageClass = classOf[Message]
 
@@ -69,8 +69,6 @@ class ProtobufSerializer(cl: ClassLoader) extends JavaSerializer(cl) {
       toPBufLocator(locator).toByteArray
     case namedSend: NamedSend =>
       toPBufNamedSend(namedSend).toByteArray
-    case _ =>
-      super.serialize(o)
   }
 
   protected def handleMetaData(metaData: Option[Array[Byte]]): Class[_] = metaData match {
@@ -94,9 +92,6 @@ class ProtobufSerializer(cl: ClassLoader) extends JavaSerializer(cl) {
         fromPBufLocator(PBufLocator.parseFrom(message))
       case NamedSendClass =>
         fromPBufNamedSend(PBufNamedSend.parseFrom(message))
-      case _ =>
-        super.deserialize(Some(clz.getName.getBytes), message)
     }
 
 }
-

@@ -1,8 +1,7 @@
-package actors.avro 
+package remote_actors.avro 
 
 import java.io._
 
-import scala.actors.remote.JavaSerializer
 import scala.reflect.Manifest
 
 import org.apache.avro.{ io, specific, Schema }
@@ -64,7 +63,7 @@ class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) exten
   }
 }
 
-abstract class BasicAvroSerializer(cl: ClassLoader) extends JavaSerializer(cl) {
+abstract class BasicAvroSerializer extends IdResolvingSerializer {
 
   import AvroInternalConverters._
 
@@ -77,9 +76,6 @@ abstract class BasicAvroSerializer(cl: ClassLoader) extends JavaSerializer(cl) {
       toBytes(toAvroLocator(locator))
     case namedSend: NamedSend =>
       toBytes(toAvroNamedSend(namedSend))
-    case _ =>
-      println("OOPS, had to use java serializer for message: " + message)
-      super.serialize(message)
   }
 
   protected def handleMetaData(metaData: Option[Array[Byte]]): Class[_] = metaData match {
@@ -115,16 +111,13 @@ abstract class BasicAvroSerializer(cl: ClassLoader) extends JavaSerializer(cl) {
       fromAvroLocator(fromBytes(message, AvroLocatorClass))
     case NamedSendClass => 
       fromAvroNamedSend(fromBytes(message, AvroNamedSendClass))
-    case _ =>
-      println("OOPS, had to use java (de)-serializer for message")
-      super.deserialize(Some(clz.getName.getBytes), message)
   }
 
 }
 
 
 /** Simplest, naive serializer */
-class MultiClassSpecificAvroSerializer(cl: ClassLoader) extends BasicAvroSerializer(cl) {
+class MultiClassSpecificAvroSerializer extends BasicAvroSerializer {
 
   override def uniqueId = 3761204115L
 
@@ -149,7 +142,7 @@ object SingleClassSpecificAvroSerializer {
   val resolvingDecoderLock = new Object
 }
 
-class SingleClassSpecificAvroSerializer[R <: SpecificRecord](cl: ClassLoader)(implicit m: Manifest[R]) extends BasicAvroSerializer(cl) {
+class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) extends BasicAvroSerializer {
 
   override def uniqueId = 2804297980L
 
