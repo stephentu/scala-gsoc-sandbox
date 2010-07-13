@@ -9,9 +9,10 @@ object Client {
   var numFinished = 0
 }
 
-class Client(id: Int, numRequests: Int, serviceMode: ServiceMode.Value, numTotal: Int) extends Actor {
+class Client(id: Int, serverHost: String, numRequests: Int, serviceMode: ServiceMode.Value, numTotal: Int) extends Actor {
   def act() {
-    val server = select(Node("127.0.0.1", 9000), 'server, serviceMode = serviceMode)
+    println("Connecting to server: " + serverHost)
+    val server = select(Node(serverHost, 9000), 'server, serviceMode = serviceMode)
     var i = 0
     loopWhile(i <= numRequests) {
       if (i < numRequests) {
@@ -44,10 +45,18 @@ class Client(id: Int, numRequests: Int, serviceMode: ServiceMode.Value, numTotal
 
 object Clients {
   def main(args: Array[String]) {
-    def containsOpt(opt: String) = args.contains(opt)
-    def parseOpt(opt: String) = args.filter(_.startsWith(opt)).head.substring(opt.size).toInt
-    val numActors = parseOpt("--numclients=") 
-    val numReqsPerActor = parseOpt("--numreqperclient=")
+    println("args: " + args.toList)
+    def containsOpt(opt: String) = args.filter(_.startsWith(opt)).size > 0
+    def parseOpt(opt: String) = args.filter(_.startsWith(opt)).head.substring(opt.size)
+    def parseOptWithDefault(opt: String, default: String) = 
+        if (containsOpt(opt))
+            parseOpt(opt)
+        else
+            default
+    val numActors = parseOpt("--numclients=").toInt
+    val numReqsPerActor = parseOpt("--numreqperclient=").toInt
+    val connectTo = parseOptWithDefault("--host=", "127.0.0.1")
+    println("connectTo: " + connectTo)
     val serviceMode = 
       if (containsOpt("--nio")) {
         println("Clients using NIO")
@@ -56,7 +65,7 @@ object Clients {
         println("Clients using TCP")
         ServiceMode.Blocking
       }
-    val actors = (1 to numActors).map(i => new Client(i, numReqsPerActor, serviceMode, numActors))
+    val actors = (1 to numActors).map(i => new Client(i, connectTo, numReqsPerActor, serviceMode, numActors))
     val startTime = System.currentTimeMillis
     actors.foreach(_.start)
     Client.lock.synchronized {

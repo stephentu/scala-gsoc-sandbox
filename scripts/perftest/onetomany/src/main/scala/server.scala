@@ -9,6 +9,7 @@ case class Stop()
 
 object Server {
   def main(args: Array[String]) {
+    //Debug.level = 3
     def containsOpt(opt: String) = args.contains(opt)
     val serviceMode = 
       if (containsOpt("--nio")) {
