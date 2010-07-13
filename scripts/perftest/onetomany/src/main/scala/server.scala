@@ -10,16 +10,16 @@ case class Stop()
 object Server {
   def main(args: Array[String]) {
     def containsOpt(opt: String) = args.contains(opt)
-    val serviceFactory = 
+    val serviceMode = 
       if (containsOpt("--nio")) {
         println("Server using NIO")
-        NioServiceFactory 
+        ServiceMode.NonBlocking
       } else {
         println("Server using TCP")
-        TcpServiceFactory
+        ServiceMode.Blocking
       }
     actor {
-      alive(9000, serviceFactory = serviceFactory)
+      alive(9000, serviceMode)
       register('server, self)
       loop {
         react {
@@ -27,6 +27,7 @@ object Server {
             sender ! Response(bytes.map(b => (b + 10).toByte))
           case Stop() =>
             println("Server is stopping")
+            releaseResourcesInActor()
             exit()
         }
       }

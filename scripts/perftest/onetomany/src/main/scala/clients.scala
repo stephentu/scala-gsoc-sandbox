@@ -9,11 +9,9 @@ object Client {
   var numFinished = 0
 }
 
-class Client(id: Int, numRequests: Int, serviceFactory: ServiceFactory, numTotal: Int) extends Actor {
+class Client(id: Int, numRequests: Int, serviceMode: ServiceMode.Value, numTotal: Int) extends Actor {
   def act() {
-    alive(9100, serviceFactory = serviceFactory)
-    register(Symbol("client" + id), self)
-    val server = select(Node("127.0.0.1", 9000), 'server, serviceFactory = serviceFactory)
+    val server = select(Node("127.0.0.1", 9000), 'server, serviceMode = serviceMode)
     var i = 0
     loopWhile(i <= numRequests) {
       if (i < numRequests) {
@@ -50,15 +48,15 @@ object Clients {
     def parseOpt(opt: String) = args.filter(_.startsWith(opt)).head.substring(opt.size).toInt
     val numActors = parseOpt("--numclients=") 
     val numReqsPerActor = parseOpt("--numreqperclient=")
-    val serviceFactory = 
+    val serviceMode = 
       if (containsOpt("--nio")) {
         println("Clients using NIO")
-        NioServiceFactory 
+        ServiceMode.NonBlocking
       } else {
         println("Clients using TCP")
-        TcpServiceFactory
+        ServiceMode.Blocking
       }
-    val actors = (1 to numActors).map(i => new Client(i, numReqsPerActor, serviceFactory, numActors))
+    val actors = (1 to numActors).map(i => new Client(i, numReqsPerActor, serviceMode, numActors))
     val startTime = System.currentTimeMillis
     actors.foreach(_.start)
     Client.lock.synchronized {
@@ -68,5 +66,6 @@ object Clients {
     val esp = endTime - startTime 
     println("Main thread awake")
     println("Time (ms): " + esp)
+    releaseResources()
   }
 }
