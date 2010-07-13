@@ -15,13 +15,19 @@ import Actor._
 import remote._
 import RemoteActor._
 
+import java.util.concurrent.CountDownLatch
+
 case class SimpleMessage(var message: String) extends AvroRecord
 
 object Test1 {
+  val latch = new CountDownLatch(2)
   def main(args: Array[String]) {
     Debug.level = 3
     Test1_A.start
     Test1_B.start
+    latch.await()
+    println("Test1 shutting down")
+    releaseResources()
   }
 }
 
@@ -38,6 +44,7 @@ object Test1_A extends Actor {
           case SimpleMessage(m) =>
             println("received: " + m)
             sender ! SimpleMessage("My reply")
+            Test1.latch.countDown()
         }
     }
   }
@@ -53,6 +60,7 @@ object Test1_B extends Actor {
         println(m)
         val future = aActor !! SimpleMessage("Sync send")
         println("received: " + future())
+        Test1.latch.countDown()
     }
   }
 }

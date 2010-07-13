@@ -140,18 +140,17 @@ class MultiClassSpecificAvroSerializer extends BasicAvroSerializer {
 object SingleClassSpecificAvroSerializer {
   /** ResolvingDecoder.resolve is NOT threadsafe... */
   val resolvingDecoderLock = new Object
+
+  case object SendMySchema
+  case object ExpectOtherSchema
 }
 
-class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) extends BasicAvroSerializer {
-
-  override def uniqueId = 2804297980L
+abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) extends BasicAvroSerializer {
+  import SingleClassSpecificAvroSerializer._
 
   private val RecordClass = m.erasure.asInstanceOf[Class[R]]
   private val schema = RecordClass.newInstance.getSchema
   private var cachedResolverObj: AnyRef = _
-
-  case object SendMySchema
-  case object ExpectOtherSchema
 
   override def initialState: Option[Any] = Some(SendMySchema)
 
@@ -165,7 +164,7 @@ class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifes
       println("trying to resolve schema: " + otherSchemaJson)
       val otherSchema = Schema.parse(otherSchemaJson)
       println("parsed other schema")
-      SingleClassSpecificAvroSerializer.resolvingDecoderLock.synchronized {
+      resolvingDecoderLock.synchronized {
         cachedResolverObj = ResolvingDecoder.resolve(otherSchema, schema)
       }
       println("resolved other schema")
