@@ -39,6 +39,7 @@ object Test3_A extends Actor {
         react {
           case m: ProtobufSimpleMessage =>
             println("received1: " + m)
+            releaseResourcesInActor()
         }
     }
   }

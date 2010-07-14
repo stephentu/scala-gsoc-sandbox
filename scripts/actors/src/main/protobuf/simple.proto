@@ -1,0 +1,5 @@
+package gsoc_scala;
+message ProtobufSimpleMessage {
+  required int32  id   = 1;
+  required string text = 2;
+}
