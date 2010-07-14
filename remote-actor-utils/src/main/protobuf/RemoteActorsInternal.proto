@@ -1,4 +1,4 @@
-package gsoc_scala;
+package remote_actors.protobuf;
 
 message PBufNode {
   required string address = 1;
@@ -16,4 +16,16 @@ message PBufNamedSend {
   optional bytes       metaData    = 3;
   required bytes       data        = 4;
   required string      session     = 5;
+}
+
+enum PBufServiceMode {
+  BLOCKING     = 0;
+  NON_BLOCKING = 1;
+}
+
+message PBufProxy {
+  required PBufNode        remoteNode          = 1;
+  required PBufServiceMode mode                = 2;
+  required string          serializerClassName = 3;
+  required string          name                = 4;
 }

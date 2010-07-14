@@ -16,43 +16,51 @@ import remote._
 import RemoteActor._
 
 /** Avro version of internal classes */
-case class AvroNode(var address: String, var port: Int) extends AvroRecord
-case class AvroLocator(var node: AvroNode, var name: String) extends AvroRecord
-case class AvroNamedSend(var senderLoc: AvroLocator,
-                         var receiverLoc: AvroLocator,
-                         var metaData: Option[Array[Byte]],
-                         var data: Array[Byte],
-                         var session: String) extends AvroRecord
+case class AvroNode(var _address: String, var _port: Int) extends Node with AvroRecord {
+  override def address = _address
+  override def port = _port
+  override def newNode(a: String, p: Int) = AvroNode(a, p)
+}
 
-object AvroInternalConverters {
+case class AvroLocator(var _node: AvroNode, var _name: String) extends Locator with AvroRecord {
+  override def node = _node
+  override def name = Symbol(_name)
+}
 
-  implicit def strToSymbol(s: String): Symbol = Symbol(s)
-  implicit def symbolToStr(sym: Symbol): String = sym.toString.substring(1)
-  implicit def toAvroNode(node: Node): AvroNode = AvroNode(node.address, node.port)
-  implicit def fromAvroNode(avroNode: AvroNode): Node = Node(avroNode.address, avroNode.port)
-  implicit def toAvroLocator(locator: Locator): AvroLocator = AvroLocator(locator.node, locator.name)
-  implicit def fromAvroLocator(avroLocator: AvroLocator): Locator = Locator(avroLocator.node, avroLocator.name)
-  implicit def toAvroNamedSend(namedSend: NamedSend): AvroNamedSend = 
-    AvroNamedSend(namedSend.senderLoc, 
-                  namedSend.receiverLoc, 
-                  if (namedSend.metaData eq null) None else Some(namedSend.metaData), 
-                  namedSend.data, 
-                  namedSend.session)
-  implicit def fromAvroNamedSend(avroNamedSend: AvroNamedSend): NamedSend = 
-    NamedSend(avroNamedSend.senderLoc, 
-              avroNamedSend.receiverLoc, 
-              avroNamedSend.metaData.getOrElse(null), 
-              avroNamedSend.data, 
-              avroNamedSend.session)
+case class AvroNamedSend(var _senderLoc: AvroLocator,
+                         var _receiverLoc: AvroLocator,
+                         var _metaData: Option[Array[Byte]],
+                         var _data: Array[Byte],
+                         var _session: String) extends NamedSend with AvroRecord {
+  override def senderLoc = _senderLoc
+  override def receiverLoc = _receiverLoc
+  override def metaData = _metaData.getOrElse(null)
+  override def data = _data
+  override def session = Symbol(_session)
+}
 
-  val NodeClass = classOf[Node]
-  val LocatorClass = classOf[Locator]
-  val NamedSendClass = classOf[NamedSend]
+object AvroServiceMode {
+  // substitute for the ServiceMode enum
+  val Blocking    = 0
+  val NonBlocking = 1
+  def intToMode(i: Int): ServiceMode.Value = i match {
+    case Blocking    => ServiceMode.Blocking
+    case NonBlocking => ServiceMode.NonBlocking
+  }
+  def modeToInt(m: ServiceMode.Value): Int = m match {
+    case ServiceMode.Blocking => Blocking
+    case ServiceMode.NonBlocking => NonBlocking
+  }
+}
 
-  val AvroNodeClass = classOf[AvroNode]
-  val AvroLocatorClass = classOf[AvroLocator]
-  val AvroNamedSendClass = classOf[AvroNamedSend]
-
+case class AvroProxy(var _remoteNode: AvroNode, 
+                     var _mode: Int,
+                     var _serializerClassName: String,
+                     var _name: String) extends Proxy with AvroRecord {
+  override def remoteNode = _remoteNode
+  override def mode = AvroServiceMode.intToMode(_mode) 
+  override def serializerClassName = _serializerClassName
+  override def name = Symbol(_name)
 }
 
 class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) extends SpecificDatumReader[T](schema) {
@@ -63,29 +71,39 @@ class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) exten
   }
 }
 
-abstract class BasicAvroSerializer extends IdResolvingSerializer {
+trait AvroEnvelopeMessageCreator { this: Serializer => 
+  override type MyNode = AvroNode
+  override type MyNamedSend = AvroNamedSend
+  override type MyLocator = AvroLocator
+  override type MyProxy = AvroProxy
 
-  import AvroInternalConverters._
+  override def newNode(address: String, port: Int): AvroNode = AvroNode(address, port)
+
+  override def newNamedSend(senderLoc: AvroLocator, receiverLoc: AvroLocator, metaData: Array[Byte], data: Array[Byte], session: Symbol): AvroNamedSend =
+    AvroNamedSend(senderLoc, receiverLoc, if (metaData eq null) None else Some(metaData), data, session.name)
+
+  override def newLocator(node: AvroNode, name: Symbol): AvroLocator =
+    AvroLocator(node, name.name)
+
+  override def newProxy(remoteNode: AvroNode, mode: ServiceMode.Value, serializerClassName: String, name: Symbol): AvroProxy =
+    AvroProxy(remoteNode, AvroServiceMode.modeToInt(mode), serializerClassName, name.name)
+}
+
+abstract class BasicSpecificAvroSerializer 
+  extends Serializer
+  with    AvroEnvelopeMessageCreator {
 
   override def serializeMetaData(message: AnyRef): Option[Array[Byte]] = Some(serializeClassName(message))
-
-  override def serialize(message: AnyRef): Array[Byte] = message match {
-    case node: Node =>
-      toBytes(toAvroNode(node))
-    case locator: Locator =>
-      toBytes(toAvroLocator(locator))
-    case namedSend: NamedSend =>
-      toBytes(toAvroNamedSend(namedSend))
-  }
 
   protected def handleMetaData(metaData: Option[Array[Byte]]): Class[_] = metaData match {
     case Some(bytes) => Class.forName(new String(bytes))
     case None        => throw new IllegalArgumentException("avro serializer requires class name in metadata")
   }
 
-  override def deserialize(metaData: Option[Array[Byte]], message: Array[Byte]): AnyRef = {
-    doDeserialize(handleMetaData(metaData), message)
-  }
+  protected def doDeserialize(clz: Class[_], message: Array[Byte]): AnyRef
+
+  override final def deserialize(metaData: Option[Array[Byte]], data: Array[Byte]): AnyRef = 
+    doDeserialize(handleMetaData(metaData), data)
 
   protected def toBytes[T <: SpecificRecord](record: T): Array[Byte] = {
     val writer = new SpecificDatumWriter[T](record.getSchema)
@@ -104,35 +122,25 @@ abstract class BasicAvroSerializer extends IdResolvingSerializer {
     newInstance
   }
 
-  protected def doDeserialize(clz: Class[_], message: Array[Byte]): AnyRef = clz match {
-    case NodeClass => 
-      fromAvroNode(fromBytes(message, AvroNodeClass))
-    case LocatorClass => 
-      fromAvroLocator(fromBytes(message, AvroLocatorClass))
-    case NamedSendClass => 
-      fromAvroNamedSend(fromBytes(message, AvroNamedSendClass))
-  }
-
 }
 
-
 /** Simplest, naive serializer */
-class MultiClassSpecificAvroSerializer extends BasicAvroSerializer {
+class MultiClassSpecificAvroSerializer 
+  extends BasicSpecificAvroSerializer 
+  with    IdResolvingSerializer {
 
   override def uniqueId = 3761204115L
 
   override def serialize(message: AnyRef): Array[Byte] = message match {
-    case record: SpecificRecord =>
-      toBytes(record)
-    case _ => 
-      super.serialize(message)
+    case record: SpecificRecord => toBytes(record)
+    case e => throw new IllegalArgumentException("Don't know how to serializer message " + e + " of class " + e.getClass.getName)
   }
 
   override def doDeserialize(clz: Class[_], message: Array[Byte]): AnyRef = {
     if (classOf[SpecificRecord].isAssignableFrom(clz)) 
       fromBytes[SpecificRecord](message, clz.asInstanceOf[Class[SpecificRecord]])
     else 
-      super.doDeserialize(clz, message)
+      throw new IllegalArgumentException("Don't know how to deserialize message of class " + clz.getName)
   }
 
 }
@@ -143,9 +151,15 @@ object SingleClassSpecificAvroSerializer {
 
   case object SendMySchema
   case object ExpectOtherSchema
+
+  val AvroNodeClass = classOf[AvroNode]
+  val AvroLocatorClass = classOf[AvroLocator]
+  val AvroNamedSendClass = classOf[AvroNamedSend]
+  val AvroProxyClass = classOf[AvroProxy]
 }
 
-abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) extends BasicAvroSerializer {
+abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) 
+  extends BasicSpecificAvroSerializer {
   import SingleClassSpecificAvroSerializer._
 
   private val RecordClass = m.erasure.asInstanceOf[Class[R]]
@@ -172,15 +186,15 @@ abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m
   }
 
   override def serialize(message: AnyRef): Array[Byte] = message.getClass match {
-    case RecordClass =>
-      toBytes(message.asInstanceOf[R])
-    case _ => 
-      super.serialize(message)
+    case RecordClass => toBytes(message.asInstanceOf[R])
+    case AvroNodeClass | AvroLocatorClass | AvroNamedSendClass | AvroProxyClass => 
+      toBytes(message.asInstanceOf[SpecificRecord])
+    case e => throw new IllegalArgumentException("Don't know how to serializer message " + e + " of class " + e.getName)
   }
 
   private def fromBytesResolving(message: Array[Byte]): R = {
     if (cachedResolverObj eq null)
-      throw new Exception("serializer has not been initialized with handshake")
+      throw new IllegalStateException("serializer has not been initialized with handshake")
     val newInstance = RecordClass.newInstance
     val reader = new ScalaSpecificDatumReader[R](newInstance.getSchema)
     val decoderFactory = new DecoderFactory
@@ -201,10 +215,11 @@ abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m
   }
 
   override def doDeserialize(clz: Class[_], message: Array[Byte]): AnyRef = clz match {
-    case RecordClass =>
-      fromBytesResolving(message)
-    case _ =>
-      super.doDeserialize(clz, message)
+    case RecordClass => fromBytesResolving(message)
+    case AvroNodeClass | AvroLocatorClass | AvroNamedSendClass | AvroProxyClass => 
+      fromBytes(message, clz.asInstanceOf[Class[SpecificRecord]])
+    case _ => 
+      throw new IllegalArgumentException("Don't know how to deserialize message of class " + clz.getName)
   }
 
 }
