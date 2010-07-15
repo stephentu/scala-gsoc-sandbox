@@ -20,7 +20,7 @@ object Test2 {
 class LoadBalancer extends Actor {
 
   override def act() {
-    val proxies = (0 until 5).map(i => select(Node("127.0.0.1", 9100 + i), Symbol("worker" + i), new MultiClassSpecificAvroSerializer, ServiceMode.NonBlocking)).toArray
+    val proxies = (0 until 5).map(i => select(Node("127.0.0.1", 9100 + i), Symbol("worker" + i), new MultiClassSpecificAvroSerializer, ServiceMode.NonBlocking))
     alive(8000, ServiceMode.NonBlocking)
     register('server, self)
     var i = 0
@@ -29,7 +29,7 @@ class LoadBalancer extends Actor {
         case NextServerRequest() =>
           val nextProxy = proxies(i % proxies.length)
           i += 1
-          sender ! UseConn(nextProxy.asInstanceOf[AvroProxy])
+          sender ! UseConn(nextProxy)
         case Stop() =>
           proxies.foreach(p => p ! Stop())
           releaseResourcesInActor()

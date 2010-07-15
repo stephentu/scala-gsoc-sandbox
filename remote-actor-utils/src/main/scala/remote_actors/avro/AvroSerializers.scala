@@ -71,11 +71,10 @@ class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) exten
   }
 }
 
-trait AvroEnvelopeMessageCreator { this: Serializer => 
+trait AvroEnvelopeMessageCreator { this: Serializer[Proxy] => 
   override type MyNode = AvroNode
   override type MyNamedSend = AvroNamedSend
   override type MyLocator = AvroLocator
-  override type MyProxy = AvroProxy
 
   override def newNode(address: String, port: Int): AvroNode = AvroNode(address, port)
 
@@ -85,12 +84,10 @@ trait AvroEnvelopeMessageCreator { this: Serializer =>
   override def newLocator(node: AvroNode, name: Symbol): AvroLocator =
     AvroLocator(node, name.name)
 
-  override def newProxy(remoteNode: AvroNode, mode: ServiceMode.Value, serializerClassName: String, name: Symbol): AvroProxy =
-    AvroProxy(remoteNode, AvroServiceMode.modeToInt(mode), serializerClassName, name.name)
 }
 
 abstract class BasicSpecificAvroSerializer 
-  extends Serializer
+  extends Serializer[AvroProxy]
   with    AvroEnvelopeMessageCreator {
 
   override def serializeMetaData(message: AnyRef): Option[Array[Byte]] = Some(serializeClassName(message))
@@ -121,6 +118,9 @@ abstract class BasicSpecificAvroSerializer
     reader.read(newInstance, inStream)
     newInstance
   }
+
+  override def newProxy(remoteNode: AvroNode, mode: ServiceMode.Value, serializerClassName: String, name: Symbol): AvroProxy =
+    AvroProxy(remoteNode, AvroServiceMode.modeToInt(mode), serializerClassName, name.name)
 
 }
 
@@ -187,7 +187,7 @@ abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m
 
   override def serialize(message: AnyRef): Array[Byte] = message.getClass match {
     case RecordClass => toBytes(message.asInstanceOf[R])
-    case AvroNodeClass | AvroLocatorClass | AvroNamedSendClass | AvroProxyClass => 
+    case AvroNodeClass | AvroLocatorClass | AvroNamedSendClass | AvroProxyClass => // special cases
       toBytes(message.asInstanceOf[SpecificRecord])
     case e => throw new IllegalArgumentException("Don't know how to serializer message " + e + " of class " + e.getName)
   }

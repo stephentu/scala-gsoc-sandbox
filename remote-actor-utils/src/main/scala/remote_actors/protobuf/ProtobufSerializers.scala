@@ -78,9 +78,10 @@ object PBufInternalConverters {
 
 
 class ProtobufSerializer 
-  extends Serializer
+  extends Serializer[DefaultProxyImpl]
   with    IdResolvingSerializer
-  with    DefaultEnvelopeMessageCreator {
+  with    DefaultEnvelopeMessageCreator
+  with    DefaultProxyCreator {
 
   import PBufInternalConverters._
   private val MessageClass = classOf[Message]
