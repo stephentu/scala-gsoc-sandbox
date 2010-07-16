@@ -95,8 +95,9 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
           writer.println("# Results for actor " + id)
           writer.println("# Latencies for the i-th message (ms)")
           writer.println(roundTripTimes.map(nanoToMilliseconds(_)).mkString(","))
-          writer.println("# Message Payload Size (bytes) | Actual Message Size (bytes) | Total Time (sec)")
-          writer.println(List(messageSize, actualMsgSize, nanoToSeconds(totalTime)).mkString(",")) 
+          writer.println("# Message Payload Size (bytes) | Actual Message Size (bytes) | Total Time (sec) | PerActorThroughput (Bytes/sec) | PerActorThroughput (Msgs/sec)")
+          val timeInSec = nanoToSeconds(totalTime)
+          writer.println(List(messageSize, actualMsgSize, timeInSec, (actualMsgSize * numMsgsPerActor)/timeInSec, numMsgsPerActor / timeInSec).mkString(",")) 
           writer.println()
 
           finishCallback()
@@ -109,12 +110,12 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
   val printingActor = actor {
     loop {
       react {
-        case e: Function0[Unit] => e()
+        case e: Function0[_] => e()
       }
     }
   }
 
-  val MessageSizes = Array(0, 16, 512, 1024, 4096, 8192, 65536)
+  val MessageSizes = Array(0, 16, 128, 512, 1024, 4096, 8192, 65536)
 
   def execute() {
     import java.io._
@@ -122,6 +123,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
     val writers = (1 to numActors).map(id => {
       new PrintWriter(new FileOutputStream(new File("results", List("run", runId, "actor", id).mkString("_"))))
     }).toArray
+    val resultWriter = new PrintWriter(new FileOutputStream(new File("results", List("run", runId).mkString("_"))))
     MessageSizes.foreach(msgSize => {
       println("Testing message (payload) size: " + msgSize + " bytes")
       val successes = new AtomicInteger
@@ -138,15 +140,45 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
         latch.countDown()
       }
 
+      val timer = new Timer
+      timer.start()
       val actors = (1 to numActors).map(id => new RunActor(id, writers(id - 1), msgSize, success, error))
       actors.foreach(_.start())
       latch.await(timeout * 60, TimeUnit.SECONDS) // timeout in minutes
       // send STOP to all the actors, to reap the timeouts
       actors.foreach(_ ! STOP)
+      val elaspedTime = timer.end()
+      val elaspedTimeInSeconds = nanoToSeconds(elaspedTime)
+
+      val message = newMessage(msgSize)
+      val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
+      val totalBytesTransmitted = numActors * numMsgsPerActor * actualMsgSize
+      val bytesPerSecond = totalBytesTransmitted / elaspedTimeInSeconds
+      val msgsPerSecond = (numActors * numMsgsPerActor) / elaspedTimeInSeconds
+
+      
+      resultWriter.println("Run " + runId + " with message size: " + msgSize)
+      resultWriter.println("Num successes: " + successes.get)
+      resultWriter.println("Num failures: " + failures.get)
+      if (successes.get != numActors) {
+        resultWriter.println("There were errors. no results reported")
+      } else {
+        resultWriter.println("Total time (sec): " + nanoToSeconds(elaspedTime))
+        resultWriter.println("Bytes/Sec: " + bytesPerSecond)
+        resultWriter.println("Msgs/Sec: " + msgsPerSecond)
+      }
 
       printingActor ! { () => {
-        println("Num successes: " + successes.get)
-        println("Num failures: " + failures.get)
+          println("Run " + runId + " with message size: " + msgSize)
+          println("Num successes: " + successes.get)
+          println("Num failures: " + failures.get)
+          if (successes.get != numActors) {
+            println("There were errors. no results reported")
+          } else {
+            println("Total time (sec): " + nanoToSeconds(elaspedTime))
+            println("Bytes/Sec: " + bytesPerSecond)
+            println("Msgs/Sec: " + msgsPerSecond)
+          }
         }
       }
       
