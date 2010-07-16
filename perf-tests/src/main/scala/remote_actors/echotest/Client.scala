@@ -65,15 +65,13 @@ case object STOP
 
 class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActors: Int, runTime: Int) {
 
-  class RunActor(id: Int, writer: PrintWriter, messageSize: Int, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
+  class RunActor(id: Int, writer: PrintWriter, messageSize: Int, actualMsgSize: Long, message: Array[Byte], messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
     override def exceptionHandler: PartialFunction[Exception, Unit] = {
       case e: Exception => errorCallback(e)
     }
     override def act() {
       val server = select(Node(host, port), 'server, serviceMode = mode) // use java serialization
       var i = 0
-      val message = newMessage(messageSize)
-      val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
       val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
       val timer = new Timer
       timer.start()
@@ -179,7 +177,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
       timer.start()
       val actors = (1 to numActors).map(id => {
         val writer = writers(id - 1)
-        val actor = new RunActor(id, writer, msgSize, msgCallback, success, error)
+        val actor = new RunActor(id, writer, msgSize, actualMsgSize, message, msgCallback, success, error)
         writer.println("<messagesizeexperiment>")
         val xmls = (<payloadsize unit="bytes">{msgSize}</payloadsize><actualsize unit="bytes">{actualMsgSize}</actualsize>)
         xmls.foreach { writer.println(_) }
