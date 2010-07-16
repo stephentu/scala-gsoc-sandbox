@@ -75,6 +75,59 @@
                 <groupId>org.scala-tools</groupId>
                 <artifactId>maven-scala-plugin</artifactId>
                 <configuration>
+                    <launchers>
+                      <launcher>
+                        <id>server</id>
+                        <mainClass>remote_actors.echotest.Server</mainClass>
+                        <jvmArgs>
+                          <jvmArg>-server</jvmArg>
+                          <jvmArg>-Xms2048m</jvmArg>
+                          <jvmArg>-Xmx2048m</jvmArg>
+                          <jvmArg>-XX:+UseParallelGC</jvmArg>
+                          <jvmArg>-XX:+AggressiveOpts</jvmArg>
+                          <jvmArg>-XX:+UseFastAccessorMethods</jvmArg>
+                        </jvmArgs>
+                      </launcher>
+                      <launcher>
+                        <id>server-nio</id>
+                        <mainClass>remote_actors.echotest.Server</mainClass>
+                        <args>
+                          <arg>--nio</arg>
+                        </args>
+                        <jvmArgs>
+                          <jvmArg>-server</jvmArg>
+                          <jvmArg>-Xms2048m</jvmArg>
+                          <jvmArg>-Xmx2048m</jvmArg>
+                          <jvmArg>-XX:+UseParallelGC</jvmArg>
+                          <jvmArg>-XX:+AggressiveOpts</jvmArg>
+                          <jvmArg>-XX:+UseFastAccessorMethods</jvmArg>
+                        </jvmArgs>
+                      </launcher>
+                      <launcher>
+                        <id>client</id>
+                        <mainClass>remote_actors.echotest.Client</mainClass>
+                        <jvmArgs>
+                          <jvmArg>-server</jvmArg>
+                          <jvmArg>-Xms2048m</jvmArg>
+                          <jvmArg>-Xmx2048m</jvmArg>
+                          <jvmArg>-XX:+UseParallelGC</jvmArg>
+                          <jvmArg>-XX:+AggressiveOpts</jvmArg>
+                          <jvmArg>-XX:+UseFastAccessorMethods</jvmArg>
+                        </jvmArgs>
+                      </launcher>
+                      <launcher>
+                        <id>client-nio</id>
+                        <mainClass>remote_actors.echotest.Client</mainClass>
+                        <jvmArgs>
+                          <jvmArg>-server</jvmArg>
+                          <jvmArg>-Xms2048m</jvmArg>
+                          <jvmArg>-Xmx2048m</jvmArg>
+                          <jvmArg>-XX:+UseParallelGC</jvmArg>
+                          <jvmArg>-XX:+AggressiveOpts</jvmArg>
+                          <jvmArg>-XX:+UseFastAccessorMethods</jvmArg>
+                        </jvmArgs>
+                      </launcher>
+                    </launchers>
                     <args>
                         <arg>-deprecation</arg>
                         <arg>-unchecked</arg>
