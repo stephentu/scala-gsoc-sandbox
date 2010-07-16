@@ -22,7 +22,8 @@ import org.apache.commons.math.stat.descriptive.DescriptiveStatistics
 
 object Client {
   val ExpId = System.currentTimeMillis
-  val ExpDir = new File("results_" + ExpId)
+  val ExpParent = new File("/scratch/sltu")
+  val ExpDir = new File(ExpParent, "results_" + ExpId)
   val MessageSizes = Array(0, 64, 128, 512, 1024, 2048, 4096, 8192, 65536)
   val Messages = MessageSizes.map(size => newMessage(size))
   val ActualMsgSizes = Messages.map(message => javaSerializationMessageSize(Message(message, System.nanoTime)))
@@ -127,7 +128,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
 
   def execute() {
     val writers = (1 to numActors).map(id => {
-      val writer = new PrintWriter(new FileOutputStream(new File("results_" + Client.ExpId, List("run", runId, "numactors", numActors, "actor", id).mkString("_") + ".xml")))
+      val writer = new PrintWriter(new FileOutputStream(new File(Client.ExpDir, List("run", runId, "numactors", numActors, "actor", id).mkString("_") + ".xml")))
       writer.println("<actor>")
       val xml = 
         <metadata>
@@ -140,7 +141,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
       writer.println(xml.toString) 
       writer
     }).toArray
-    val resultWriter = new PrintWriter(new FileOutputStream(new File("results_" + Client.ExpId, List("run", runId, "numactors", numActors).mkString("_") + ".xml")))
+    val resultWriter = new PrintWriter(new FileOutputStream(new File(Client.ExpDir, List("run", runId, "numactors", numActors).mkString("_") + ".xml")))
     resultWriter.println("<experiment>")
     val xml = 
       <metadata>
