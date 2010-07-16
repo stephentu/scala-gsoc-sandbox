@@ -13,6 +13,11 @@ import java.util.concurrent._
 import java.util.concurrent.atomic._
 
 import java.io._
+import java.util.{Timer => JTimer, TimerTask}
+
+import scala.collection.mutable.ArrayBuffer
+
+import org.apache.commons.math.stat.descriptive.DescriptiveStatistics
 
 case class Message(bytes: Array[Byte], timeCreated: Long) {
   def timeElasped = System.nanoTime - timeCreated
@@ -26,14 +31,13 @@ object Client {
     val port = parseOptIntDefault(args,"--serverport=", 9000)
     val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     val numActorsList = parseOptListDefault(args,"--numactors=", List("1", "10", "100", "1000", "10000")).map(_.toInt)
-    val numMsgsPerActor = parseOptIntDefault(args,"--nummsgsperactor=", 5000)
+    val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
-    val timeout = parseOptIntDefault(args,"--runtimeout=", 60) // 60 minutes
 
     println("---------------------------------------------------------------------")
     println("Connecting to host " + host + " port " + port + " using mode " + mode)
     println("NumActorsList = " + numActorsList)
-    println("NumMsgsPerActor = " + numMsgsPerActor)
+    println("RunTime = " + runTime)
     println("NumRuns = " + numRuns)
     println("---------------------------------------------------------------------")
     println()
@@ -46,7 +50,7 @@ object Client {
       println("---------------------------------------------------------------------")
       numActorsList.foreach(numActors => {
         println("Starting run with " + numActors + " actors")
-        val run = new Run(runNum, host, port, mode, numActors, numMsgsPerActor, timeout)
+        val run = new Run(runNum, host, port, mode, numActors, runTime)
         run.execute() // blocks until run finished
         println("Run " + runNum + " with " + numActors + " actors has terminated")
         println("---------------------------------------------------------------------")
@@ -59,9 +63,9 @@ object Client {
 
 case object STOP
 
-class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActors: Int, numMsgsPerActor: Int, timeout: Int) {
+class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActors: Int, runTime: Int) {
 
-  class RunActor(id: Int, writer: PrintWriter, messageSize: Int, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
+  class RunActor(id: Int, writer: PrintWriter, messageSize: Int, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
     override def exceptionHandler: PartialFunction[Exception, Unit] = {
       case e: Exception => errorCallback(e)
     }
@@ -69,72 +73,54 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
       val server = select(Node(host, port), 'server, serviceMode = mode) // use java serialization
       var i = 0
       val message = newMessage(messageSize)
-      val roundTripTimes = new Array[Long](numMsgsPerActor) // in nanoseconds
+      val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
+      val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
       val timer = new Timer
       timer.start()
-      loopWhile(i <= numMsgsPerActor) {
-        if (i < numMsgsPerActor) {
-          server ! Message(message, System.nanoTime)
-          react {
-            case m @ Message(retVal, _) => 
-              roundTripTimes(i) = m.timeElasped
-              if ((i % 100) == 0 && !java.util.Arrays.equals(message, retVal))
-                System.err.println("WARNING: ARRAYS DO NOT MATCH") // validate every 100 messages
-              i += 1
-            case STOP =>
-              println("I TIMED OUT")
-              exit()
-          }
-        } else {
-          val totalTime = timer.end()
-          val avgRTL = roundTripTimes.map(nanoToMilliseconds(_)).foldLeft(0.0)(_+_) / numMsgsPerActor 
-          val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
-
-          //printingActor ! { () => {
-          //    // terminated. 
-          //    println("Run set " + runId + " with " + numActors + " actors for actor "  + id + " successfully terminated")
-          //    println("Message payload size: " + messageSize + " (bytes)")
-          //    println("Actual message size: " + actualMsgSize + " (bytes)")
-          //    println("Total time: " + nanoToSeconds(totalTime) + " (seconds)")
-          //    println("Average round trip latency: " + avgRTL + " (ms)")
-          //    println()
-          //    // TODO: variance
-          //  }
-          //}
-
-          //writer.println("# Results for run set " + runId + " with " + numActors + " for actor " + id)
-          //writer.println("# Latencies for the i-th message (ms)")
-          //writer.println(roundTripTimes.map(nanoToMilliseconds(_)).mkString(","))
-          //writer.println("# Message Payload Size (bytes) | Actual Message Size (bytes) | Total Time (sec) | PerActorThroughput (Bytes/sec) | PerActorThroughput (Msgs/sec)")
-          val timeInSec = nanoToSeconds(totalTime)
-          //writer.println(List(messageSize, actualMsgSize, timeInSec, (actualMsgSize * numMsgsPerActor)/timeInSec, numMsgsPerActor / timeInSec).mkString(",")) 
-          //writer.println()
-
-          val xml = 
-            <execution>
-              <messages>
-                {roundTripTimes.map(ns => <message><latency unit="milliseconds">{nanoToMilliseconds(ns)}</latency></message>)}
-              </messages>
-
-              <totaltime unit="milliseconds">{nanoToMilliseconds(totalTime)}</totaltime>
-              <throughput>
-                <result unit="bytespersecond">{(actualMsgSize * numMsgsPerActor)/timeInSec}</result>
-                <result unit="messagespersecond">{numMsgsPerActor / timeInSec}</result>
-              </throughput>
-            </execution>
-          writer.println(xml.toString)
-
-          finishCallback()
-          exit()
+      loop {
+        server ! Message(message, System.nanoTime)
+        react {
+          case m @ Message(retVal, _) => 
+            roundTripTimes += m.timeElasped
+            if ((i % 100) == 0 && !java.util.Arrays.equals(message, retVal))
+              System.err.println("WARNING: ARRAYS DO NOT MATCH") // validate every 100 messages
+            i += 1
+            messageCallback()
+          case STOP =>
+            // time is up
+            val totalTime = timer.end()
+            val stats = new DescriptiveStatistics
+            roundTripTimes.foreach(t => stats.addValue(nanoToMilliseconds(t)))
+            val avgRTL = //roundTripTimes.map(nanoToMilliseconds(_)).foldLeft(0.0)(_+_) / i 
+                stats.getMean
+            val timeInSec = nanoToSeconds(totalTime)
+            val xml = 
+              <execution>
+                <latency unit="milliseconds">
+                  <mean>{avgRTL}</mean>
+                  <median>{stats.getPercentile(50.0)}</median>
+                  <variance>{stats.getVariance}</variance>
+                  <min>{stats.getMin}</min>
+                  <max>{stats.getMax}</max>
+                  <percentile value="0.1">{stats.getPercentile(0.1)}</percentile>
+                  <percentile value="1.0">{stats.getPercentile(1.0)}</percentile>
+                  <percentile value="5.0">{stats.getPercentile(5.0)}</percentile>
+                  <percentile value="95.0">{stats.getPercentile(95.0)}</percentile>
+                  <percentile value="99.0">{stats.getPercentile(99.0)}</percentile>
+                  <percentile value="99.9">{stats.getPercentile(99.9)}</percentile>
+                </latency>
+                <totaltime unit="milliseconds">{nanoToMilliseconds(totalTime)}</totaltime>
+                <totalmessages>{stats.getN}</totalmessages>
+                <throughput>
+                  <result unit="bytespersecond">{(actualMsgSize * stats.getN)/timeInSec}</result>
+                  <result unit="messagespersecond">{stats.getN / timeInSec}</result>
+                </throughput>
+              </execution>
+            writer.println(xml.toString)
+            writer.flush()
+            finishCallback()
+            exit()
         }
-      }
-    }
-  }
-
-  val printingActor = actor {
-    loop {
-      react {
-        case e: Function0[_] => e()
       }
     }
   }
@@ -151,6 +137,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
           <runid>{runId}</runid>
           <numactors>{numActors}</numactors>
           <actorid>{id}</actorid>
+          <runtime>{runTime}</runtime>
         </metadata>
       writer.println(xml.toString) 
       writer
@@ -159,14 +146,18 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
     resultWriter.println("<experiment>")
     val xml = 
       <metadata>
+        <expid>{Client.ExpId}</expid>
         <runid>{runId}</runid>
         <numactors>{numActors}</numactors>
+        <runtime>{runTime}</runtime>
       </metadata>
     resultWriter.println(xml.toString)
+    val jtimer = new JTimer
     MessageSizes.foreach(msgSize => {
       println("Testing message (payload) size: " + msgSize + " bytes")
       val successes = new AtomicInteger
       val failures = new AtomicInteger
+      val numMessages = new AtomicInteger
       val latch = new CountDownLatch(numActors)
 
       val success = () => {
@@ -179,6 +170,8 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
         latch.countDown()
       }
 
+      val msgCallback = () => { numMessages.getAndIncrement(); () }
+
       val message = newMessage(msgSize)
       val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
 
@@ -186,7 +179,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
       timer.start()
       val actors = (1 to numActors).map(id => {
         val writer = writers(id - 1)
-        val actor = new RunActor(id, writer, msgSize, success, error)
+        val actor = new RunActor(id, writer, msgSize, msgCallback, success, error)
         writer.println("<messagesizeexperiment>")
         val xmls = (<payloadsize unit="bytes">{msgSize}</payloadsize><actualsize unit="bytes">{actualMsgSize}</actualsize>)
         xmls.foreach { writer.println(_) }
@@ -194,19 +187,26 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
       })
 
       actors.foreach(_.start())
-      latch.await(timeout * 60, TimeUnit.SECONDS) // timeout in minutes
-      // send STOP to all the actors, to reap the timeouts
-      actors.foreach(_ ! STOP)
+      // start timer task
+      jtimer.schedule(new TimerTask {
+          override def run() = {
+            // send STOP to all the actors; the time is up
+            actors.foreach(_ ! STOP)
+          }
+        }, runTime * 60 * 1000) // runTime in min, schedule wants ms
+
+      latch.await(runTime * 60 * 2, TimeUnit.SECONDS) // wait twice as long for the actors to actually shut down
+        
 
       writers.foreach(_.println("</messagesizeexperiment>"))
 
       val elaspedTime = timer.end()
       val elaspedTimeInSeconds = nanoToSeconds(elaspedTime)
 
-
-      val totalBytesTransmitted = numActors * numMsgsPerActor * actualMsgSize
+      val totalMsgs = numMessages.get
+      val totalBytesTransmitted = totalMsgs * actualMsgSize
       val bytesPerSecond = totalBytesTransmitted / elaspedTimeInSeconds
-      val msgsPerSecond = (numActors * numMsgsPerActor) / elaspedTimeInSeconds
+      val msgsPerSecond = totalMsgs / elaspedTimeInSeconds
 
       
       //resultWriter.println("Run set " + runId + " with " + numActors + " actors with message size: " + msgSize)
@@ -221,6 +221,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
             //resultWriter.println("Msgs/Sec: " + msgsPerSecond)
             <success>
               <totaltime unit="seconds">{nanoToSeconds(elaspedTime)}</totaltime>
+              <nummessages>{totalMsgs}</nummessages>
               <throughput unit="bytespersecond">{bytesPerSecond}</throughput>
               <throughput unit="messagespersecond">{msgsPerSecond}</throughput>
             </success>
@@ -233,6 +234,7 @@ class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActor
           {innerXml}
         </messagesizeexperiment>
       resultWriter.println(xml.toString)
+      resultWriter.flush()
 
       //printingActor ! { () => {
       //    println("Run set " + runId + " with " + numActors + " actors with message size: " + msgSize)
