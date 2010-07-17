@@ -24,7 +24,7 @@ case object StopAnnouncer
 
 object Node {
   val ExpId = System.currentTimeMillis
-  val ExpDir = new File("results_" + ExpId)
+  val ExpDir = new File("results_nodetest_" + ExpId)
   val LocalHostName = InetAddress.getLocalHost.getHostName
   val DefaultNodes = (10 to 15).map(i => "r" + i).toList
   def main(args: Array[String]) {
@@ -47,7 +47,7 @@ object Node {
     println()
 
     val announcer = actor {
-      alive(port)
+      alive(port, mode)
       register('announcer, self)
       loop { 
         react { 
@@ -112,6 +112,7 @@ object Node {
       override def act() {
         alive(port, serviceMode = mode)
         register(Symbol("actor" + id), self)
+        //println("actor " + id + " alive and registered on port " + port)
         var i = 0
         val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
         val timer = new Timer
@@ -127,6 +128,7 @@ object Node {
               i += 1
               messageCallback()
             case STOP =>
+              //println("actor " + id + " received STOP")
               // time is up
               val totalTime = timer.end()
               val stats = new DescriptiveStatistics
@@ -167,8 +169,9 @@ object Node {
 
 
     def execute() {
+      println("numActors = " + numActors)
       val writers = (0 until numActors).map(id => {
-        val writer = new PrintWriter(new FileOutputStream(new File("results_" + ExpId, List("run", runId, "numactors", numActors, "actor", id).mkString("_") + ".xml")))
+        val writer = new PrintWriter(new FileOutputStream(new File(ExpDir, List("run", runId, "numactors", numActors, "actor", id).mkString("_") + ".xml")))
         writer.println("<actor>")
         val xml = 
           <metadata>
@@ -184,7 +187,7 @@ object Node {
         writer.println(xml.toString) 
         writer
       }).toArray
-      val resultWriter = new PrintWriter(new FileOutputStream(new File("results_" + ExpId, List("run", runId, "numactors", numActors).mkString("_") + ".xml")))
+      val resultWriter = new PrintWriter(new FileOutputStream(new File(ExpDir, List("run", runId, "numactors", numActors).mkString("_") + ".xml")))
       resultWriter.println("<experiment>")
       val xml = 
         <metadata>
@@ -206,11 +209,14 @@ object Node {
 
       val success = () => {
         successes.getAndIncrement()
+        //println("Counting down on latch from success")
         latch.countDown()
       }
 
       val error = (e: Exception) => {
         failures.getAndIncrement()
+        //println("Counting down on latch from error")
+        e.printStackTrace()
         latch.countDown()
       }
 
@@ -233,7 +239,9 @@ object Node {
           }
         }, runTime * 60 * 1000) // runTime in min, schedule wants ms
 
+      println("Awaiting on latch for " + (runTime * 60 * 2) + " seconds")
       latch.await(runTime * 60 * 2, TimeUnit.SECONDS) // wait twice as long for the actors to actually shut down
+      println("Woke up from latch")
         
       val elaspedTime = timer.end()
       val elaspedTimeInSeconds = nanoToSeconds(elaspedTime)
