@@ -15,7 +15,7 @@ object TestUtils {
   def nanoToMilliseconds(ns: Double): Double = ns / 1e6
 
   def javaSerializationMessageSize(o: AnyRef): Long = {
-    val s = new JavaSerializer
+    val s = new JavaSerializer(null, null)
     s.serialize(o).length
   }
 

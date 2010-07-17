@@ -29,13 +29,12 @@ object Client {
   def main(args: Array[String]) {
     val host = parseOptStringDefault(args,"--servername=", "r10")
     val port = parseOptIntDefault(args,"--serverport=", 9000)
-    val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     val numActorsList = parseOptListDefault(args,"--numactors=", List("1", "10", "100", "1000", "10000")).map(_.toInt)
     val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
 
     println("---------------------------------------------------------------------")
-    println("Connecting to host " + host + " port " + port + " using mode " + mode)
+    println("Connecting to host " + host + " port " + port)
     println("NumActorsList = " + numActorsList)
     println("RunTime = " + runTime)
     println("NumRuns = " + numRuns)
@@ -50,7 +49,7 @@ object Client {
       println("---------------------------------------------------------------------")
       numActorsList.foreach(numActors => {
         println("Starting run with " + numActors + " actors")
-        val run = new Run(runNum, host, port, mode, numActors, runTime)
+        val run = new Run(runNum, host, port, numActors, runTime)
         run.execute() // blocks until run finished
         println("Run " + runNum + " with " + numActors + " actors has terminated")
         println("---------------------------------------------------------------------")
@@ -63,14 +62,14 @@ object Client {
 
 case object STOP
 
-class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActors: Int, runTime: Int) {
+class Run(runId: Int, host: String, port: Int, numActors: Int, runTime: Int) {
 
   class RunActor(id: Int, writer: PrintWriter, messageSize: Int, actualMsgSize: Long, message: Array[Byte], messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
     override def exceptionHandler: PartialFunction[Exception, Unit] = {
       case e: Exception => errorCallback(e)
     }
     override def act() {
-      val server = select(Node(host, port), 'server, serviceMode = mode) // use java serialization
+      val server = select(Node(host, port), 'server) // use java serialization
       var i = 0
       val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
       val timer = new Timer
