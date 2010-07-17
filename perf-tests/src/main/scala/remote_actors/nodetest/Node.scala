@@ -95,7 +95,7 @@ object Node {
 
     val messageSize = 4096
     val message = newMessage(messageSize)
-    val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
+    val actualMsgSize = javaSerializationMessageSize(NodeMessage(message, System.nanoTime, LocalHostName, 0, 0, 0, false))
 
     class RunActor(id: Int, writer: PrintWriter, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
       override def exceptionHandler: PartialFunction[Exception, Unit] = {
@@ -109,24 +109,45 @@ object Node {
       def nextSymbol() = {
         Symbol("actor" + random.nextInt(numActors))
       }
+
+      private var msgsSent = 0
+      private var msgsRecv = 0
+
+      private def sendNextMsg() {
+        val server = select(nextNode(), nextSymbol(), serviceMode = mode) // use java serialization
+        server ! NodeMessage(message, System.nanoTime, LocalHostName, runId, id, msgsSent, false)
+        msgsSent += 1
+      }
+
       override def act() {
         alive(port, serviceMode = mode)
         register(Symbol("actor" + id), self)
         //println("actor " + id + " alive and registered on port " + port)
-        var i = 0
+
         val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
         val timer = new Timer
         timer.start()
+        sendNextMsg()
         loop {
-          val server = select(nextNode(), nextSymbol(), serviceMode = mode) // use java serialization
-          server ! Message(message, System.nanoTime)
           react {
-            case m @ Message(retVal, _) => 
-              roundTripTimes += m.timeElasped
-              if ((i % 100) == 0 && !java.util.Arrays.equals(message, retVal))
+            case m @ NodeMessage(recvMessage, _, recvHostName, recvRunId, recvId, recvI, true)
+              if (recvHostName == LocalHostName &&
+                  recvRunId == runId &&
+                  recvId == id &&
+                  recvI == msgsRecv) =>
+              if ((msgsRecv % 100) == 0 && !java.util.Arrays.equals(message, recvMessage))
                 System.err.println("WARNING: ARRAYS DO NOT MATCH") // validate every 100 messages
-              i += 1
+              roundTripTimes += m.timeElasped
+              msgsRecv += 1
               messageCallback()
+              sendNextMsg()
+            case m @ NodeMessage(a0, a1, a2, a3, a4, a5, false) =>
+              sender ! NodeMessage(a0, a1, a2, a3, a4, a5, true)  // echo once
+            case m @ NodeMessage(_, _, _, _, _, _, true) =>
+              // we've received a message which was echoed back to us, but we
+              // did not send it out this round
+              System.err.println("expecting: recvHostName: " + LocalHostName + ", runId: " + runId + ", recvId: " + id + ", recvI: " + msgsRecv)
+              System.err.println("BUG: " + m)
             case STOP =>
               //println("actor " + id + " received STOP")
               // time is up
