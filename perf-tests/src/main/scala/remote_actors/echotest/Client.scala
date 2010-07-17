@@ -19,18 +19,18 @@ import scala.collection.mutable.ArrayBuffer
 
 import org.apache.commons.math.stat.descriptive.DescriptiveStatistics
 
-case class Message(bytes: Array[Byte], timeCreated: Long) {
-  def timeElasped = System.nanoTime - timeCreated
-}
 
 object Client {
   val ExpId = System.currentTimeMillis
   val ExpDir = new File("results_" + ExpId)
+  val MessageSizes = Array(0, 64, 128, 512, 1024, 2048, 4096, 8192, 65536)
+  val Messages = MessageSizes.map(size => newMessage(size))
+  val ActualMsgSizes = Messages.map(message => javaSerializationMessageSize(Message(message, System.nanoTime)))
   def main(args: Array[String]) {
     val host = parseOptStringDefault(args,"--servername=", "r10")
     val port = parseOptIntDefault(args,"--serverport=", 9000)
     val numActorsList = parseOptListDefault(args,"--numactors=", List("1", "10", "100", "1000", "10000")).map(_.toInt)
-    val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
+    val runTime = parseOptIntDefault(args,"--runtime=", 5) // 5 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
 
     println("---------------------------------------------------------------------")
@@ -122,7 +122,7 @@ class Run(runId: Int, host: String, port: Int, numActors: Int, runTime: Int) {
     }
   }
 
-  val MessageSizes = Array(0, 64, 128, 512, 1024, 2048, 4096, 8192, 65536)
+
 
   def execute() {
     val writers = (1 to numActors).map(id => {
@@ -150,7 +150,11 @@ class Run(runId: Int, host: String, port: Int, numActors: Int, runTime: Int) {
       </metadata>
     resultWriter.println(xml.toString)
     val jtimer = new JTimer
-    MessageSizes.foreach(msgSize => {
+    (0 until Client.MessageSizes.length).foreach(idx => {
+      val msgSize = Client.MessageSizes(idx)
+      val message = Client.Messages(idx)
+      val actualMsgSize = Client.ActualMsgSizes(idx)
+
       println("Testing message (payload) size: " + msgSize + " bytes")
       val successes = new AtomicInteger
       val failures = new AtomicInteger
@@ -168,9 +172,6 @@ class Run(runId: Int, host: String, port: Int, numActors: Int, runTime: Int) {
       }
 
       val msgCallback = () => { numMessages.getAndIncrement(); () }
-
-      val message = newMessage(msgSize)
-      val actualMsgSize = javaSerializationMessageSize(Message(message, System.nanoTime))
 
       val timer = new Timer
       timer.start()
