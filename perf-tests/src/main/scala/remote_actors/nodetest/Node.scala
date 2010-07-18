@@ -25,9 +25,11 @@ case object StopAnnouncer
 object Node {
   val ExpId = System.currentTimeMillis
   val ExpDir = new File("results_nodetest_" + ExpId)
-  val LocalHostName = InetAddress.getLocalHost.getHostName
+  val LocalHostName = InetAddress.getLocalHost.getCanonicalHostName
   val DefaultNodes = (10 to 15).map(i => "r" + i).toList
   def main(args: Array[String]) {
+    val level = parseOptIntDefault(args, "--debug=", 1) 
+    Debug.level = level
     val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     val numActors = parseOptIntDefault(args,"--numactors=", 1000)
     val port = parseOptIntDefault(args,"--listenport=", 16873)
@@ -64,7 +66,7 @@ object Node {
       var continue = true
       while (continue) {
         try {
-          select(scala.actors.remote.Node(hostname, port), 'announcer)
+          select(scala.actors.remote.Node(hostname, port), 'announcer) // make blocking conn here
           continue = false
         } catch {
           case e: ConnectException =>
@@ -80,7 +82,7 @@ object Node {
       println("---------------------------------------------------------------------")
       println("Starting run " + runNum)
       println("---------------------------------------------------------------------")
-      val run = new Run(runNum, port, mode, nodes.map(h => scala.actors.remote.Node(h, port)).toArray, numActors, runTime)
+      val run = new Run(runNum, port, mode, nodes.map(h => scala.actors.remote.Node(h, port).canonicalForm).toArray, numActors, runTime)
       run.execute()
       println("Run " + runNum + " has terminated")
       println("---------------------------------------------------------------------")
@@ -90,14 +92,22 @@ object Node {
   }
 
   case object STOP
+  case object START
+  case object READY
 
   class Run(runId: Int, port: Int, mode: ServiceMode.Value, nodes: Array[Node], numActors: Int, runTime: Int) {
 
     val messageSize = 4096
     val message = newMessage(messageSize)
-    val actualMsgSize = javaSerializationMessageSize(NodeMessage(message, System.nanoTime, LocalHostName, 0, 0, 0, false))
+    val actualMsgSize = javaSerializationMessageSize(NodeMessage(message, 
+                                                                 System.nanoTime, 
+                                                                 FromActor(LocalHostName, Symbol("actor" + numActors)),
+                                                                 ToActor("TEST", Symbol("actor" + numActors)),
+                                                                 0, 
+                                                                 0, 
+                                                                 false))
 
-    class RunActor(id: Int, writer: PrintWriter, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
+    class RunActor(controlActor: Actor, id: Int, writer: PrintWriter, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
       override def exceptionHandler: PartialFunction[Exception, Unit] = {
         case e: Exception => errorCallback(e)
       }
@@ -109,40 +119,59 @@ object Node {
       def nextSymbol() = {
         Symbol("actor" + random.nextInt(numActors))
       }
+      val ThisSymbol = Symbol("actor" + id)
 
-      private var msgsSent = 0
-      private var msgsRecv = 0
+      var msgsSent = 0
+      var msgsRecv = 0
+
+      override def toString = "<RunActor runId: " + runId + " id: " + id + ">"
 
       private def sendNextMsg() {
-        val server = select(nextNode(), nextSymbol(), serviceMode = mode) // use java serialization
-        server ! NodeMessage(message, System.nanoTime, LocalHostName, runId, id, msgsSent, false)
+        val nextN = nextNode()
+        val nextSym = nextSymbol()
+        val server = select(nextN, nextSym, serviceMode = mode) // use java serialization
+        val msg = NodeMessage(message, 
+                              System.nanoTime, 
+                              FromActor(LocalHostName, ThisSymbol),
+                              ToActor(nextN.address, nextSym), 
+                              runId, 
+                              msgsSent, 
+                              false)
+        Debug.info(this + ": Sending message: " + msg + " to actor: " + nextSym + " with proxy: " + server)
+        server ! msg  
         msgsSent += 1
       }
 
       override def act() {
         alive(port, serviceMode = mode)
-        register(Symbol("actor" + id), self)
+        register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
-
         val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
         val timer = new Timer
-        timer.start()
-        sendNextMsg()
+        controlActor ! READY
         loop {
           react {
-            case m @ NodeMessage(recvMessage, _, recvHostName, recvRunId, recvId, recvI, true)
-              if (recvHostName == LocalHostName &&
-                  recvRunId == runId &&
-                  recvId == id &&
-                  recvI == msgsRecv) =>
+            case START =>
+              timer.start()
+              sendNextMsg()
+            case m @ NodeMessage(recvMessage, 
+                                 _, 
+                                 FromActor(LocalHostName, ThisSymbol),
+                                 _, 
+                                 recvRunId, 
+                                 recvI, 
+                                 true) if (recvRunId == runId && recvI == msgsRecv) =>
               if ((msgsRecv % 100) == 0 && !java.util.Arrays.equals(message, recvMessage))
                 System.err.println("WARNING: ARRAYS DO NOT MATCH") // validate every 100 messages
+              Debug.info(this + ": received resp to message " + recvI)
               roundTripTimes += m.timeElasped
               msgsRecv += 1
               messageCallback()
               sendNextMsg()
-            case m @ NodeMessage(a0, a1, a2, a3, a4, a5, false) =>
-              sender ! NodeMessage(a0, a1, a2, a3, a4, a5, true)  // echo once
+            case m @ NodeMessage(a0, a1, a2, ta @ ToActor(LocalHostName, ThisSymbol), a4, a5, false) =>
+              val respMsg = NodeMessage(a0, a1, a2, ta, a4, a5, true)
+              Debug.info(this + ": echoing message: " + m + " with resp " + respMsg + " to sender: " + sender)
+              sender ! respMsg 
             case m @ NodeMessage(_, _, _, _, _, _, true) =>
               // we've received a message which was echoed back to us, but we
               // did not send it out this round
@@ -183,6 +212,8 @@ object Node {
               writer.flush()
               finishCallback()
               exit()
+            case e => 
+              System.err.println(this + ": RECEIVED UNKNOWN MESSAGE: " + e + " from proxy: " + sender)
           }
         }
       }
@@ -242,27 +273,36 @@ object Node {
       }
 
       val msgCallback = () => { numMessages.getAndIncrement(); () }
-
       val timer = new Timer
-      timer.start()
-      val actors = (0 until numActors).map(id => {
-        val writer = writers(id)
-        val actor = new RunActor(id, writer, msgCallback, success, error)
-        actor
-      })
-
-      actors.foreach(_.start())
-      // start timer task
-      jtimer.schedule(new TimerTask {
-          override def run() = {
-            // send STOP to all the actors; the time is up
-            actors.foreach(_ ! STOP)
-          }
-        }, runTime * 60 * 1000) // runTime in min, schedule wants ms
+      var actors: Seq[RunActor] = Seq() 
+      actor {
+        actors = (0 until numActors).map(id => {
+          val writer = writers(id)
+          val actor = new RunActor(self, id, writer, msgCallback, success, error)
+          actor
+        }).toSeq
+        actors.foreach(_.start())
+        var i = 0
+        while (i < actors.length) {
+          receive { case READY => i += 1 }
+        }
+        actors.foreach(_ ! START)
+        timer.start()
+        // start timer task
+        jtimer.schedule(new TimerTask {
+            override def run() = {
+              // send STOP to all the actors; the time is up
+              actors.foreach(_ ! STOP)
+            }
+          }, runTime * 60 * 1000) // runTime in min, schedule wants ms
+      }
 
       println("Awaiting on latch for " + (runTime * 60 * 2) + " seconds")
       latch.await(runTime * 60 * 2, TimeUnit.SECONDS) // wait twice as long for the actors to actually shut down
       println("Woke up from latch")
+
+      val inactiveActors = actors filter { _.msgsRecv == 0 }
+      println("Number of inactive actors: " + inactiveActors.length)
         
       val elaspedTime = timer.end()
       val elaspedTimeInSeconds = nanoToSeconds(elaspedTime)
