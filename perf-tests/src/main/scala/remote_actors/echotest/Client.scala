@@ -23,8 +23,8 @@ import org.apache.commons.math.stat.descriptive.DescriptiveStatistics
 object Client {
   val ExpId = System.currentTimeMillis
   val ExpParent = new File("/scratch/sltu")
-  val ExpDir = new File(ExpParent, "results_" + ExpId)
-  val MessageSizes = Array(0, 64, 128, 512, 1024, 2048, 4096, 8192, 65536)
+  val ExpDir = new File(ExpParent, "results_echotest_" + ExpId)
+  val MessageSizes = Array(0, 64, 128, 512, 1024, 2048, 4096, 8192)
   val Messages = MessageSizes.map(size => newMessage(size))
   val ActualMsgSizes = Messages.map(message => javaSerializationMessageSize(Message(message, System.nanoTime)))
   def main(args: Array[String]) {
@@ -35,15 +35,26 @@ object Client {
     val runTime = parseOptIntDefault(args,"--runtime=", 5) // 5 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
 
-    println("---------------------------------------------------------------------")
-    println("Connecting to host " + host + " port " + port + " using mode " + mode)
-    println("NumActorsList = " + numActorsList)
-    println("RunTime = " + runTime)
-    println("NumRuns = " + numRuns)
-    println("---------------------------------------------------------------------")
-    println()
-
     ExpDir.mkdirs()
+    
+    val README_FILE = new File(Client.ExpDir, "README")
+    README_FILE.createNewFile()
+    val README = new PrintStream(new FileOutputStream(README_FILE))
+
+    List(README, System.out).foreach(out => {
+        out.println("---------------------------------------------------------------------")
+        out.println("Connecting to host " + host + " port " + port + " using mode " + mode)
+        out.println("NumActorsList = " + numActorsList)
+        out.println("RunTime = " + runTime)
+        out.println("NumRuns = " + numRuns)
+        out.println("MessageSizes = " + MessageSizes)
+        out.println("---------------------------------------------------------------------")
+        out.println()
+    })
+
+    README.flush(); README.close()
+
+
 
     (1 to numRuns).foreach(runNum => {
       println("---------------------------------------------------------------------")
