@@ -107,7 +107,7 @@ object Node {
                                                                  0, 
                                                                  false))
 
-    class RunActor(controlActor: Actor, id: Int, writer: PrintWriter, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
+    class RunActor(controlActor: Actor, id: Int, writer: PrintWriter, messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit, timeoutCallback: () => Unit) extends Actor {
       override def exceptionHandler: PartialFunction[Exception, Unit] = {
         case e: Exception => errorCallback(e)
       }
@@ -148,19 +148,26 @@ object Node {
         //println("actor " + id + " alive and registered on port " + port)
         val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
         val timer = new Timer
+        var started = false
         controlActor ! READY
         loop {
-          react {
+          reactWithin(5000) {
             case START =>
               timer.start()
+              started = true
               sendNextMsg()
+            case TIMEOUT =>
+              if (started) {
+                timeoutCallback()
+                sendNextMsg()
+              }
             case m @ NodeMessage(recvMessage, 
                                  _, 
                                  FromActor(LocalHostName, ThisSymbol),
                                  _, 
                                  recvRunId, 
                                  recvI, 
-                                 true) if (recvRunId == runId && recvI == msgsRecv) =>
+                                 true) if (recvRunId == runId && recvI <= msgsRecv) =>
               if ((msgsRecv % 100) == 0 && !java.util.Arrays.equals(message, recvMessage))
                 System.err.println("WARNING: ARRAYS DO NOT MATCH") // validate every 100 messages
               Debug.info(this + ": received resp to message " + recvI)
@@ -257,6 +264,7 @@ object Node {
       val successes = new AtomicInteger
       val failures = new AtomicInteger
       val numMessages = new AtomicInteger
+      val numTimeouts = new AtomicInteger
       val latch = new CountDownLatch(numActors)
 
       val success = () => {
@@ -272,13 +280,18 @@ object Node {
         latch.countDown()
       }
 
+      val timeout = () => {
+        numTimeouts.getAndIncrement()
+        ()
+      }
+
       val msgCallback = () => { numMessages.getAndIncrement(); () }
       val timer = new Timer
       var actors: Seq[RunActor] = Seq() 
       actor {
         actors = (0 until numActors).map(id => {
           val writer = writers(id)
-          val actor = new RunActor(self, id, writer, msgCallback, success, error)
+          val actor = new RunActor(self, id, writer, msgCallback, success, error, timeout)
           actor
         }).toSeq
         actors.foreach(_.start())
@@ -303,6 +316,7 @@ object Node {
 
       val inactiveActors = actors filter { _.msgsRecv == 0 }
       println("Number of inactive actors: " + inactiveActors.length)
+      println("Num timeouts: " + numTimeouts.get)
         
       val elaspedTime = timer.end()
       val elaspedTimeInSeconds = nanoToSeconds(elaspedTime)
