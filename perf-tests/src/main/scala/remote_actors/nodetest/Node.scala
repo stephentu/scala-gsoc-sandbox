@@ -31,7 +31,6 @@ object Node {
   def main(args: Array[String]) {
     val level = parseOptIntDefault(args, "--debug=", 1) 
     Debug.level = level
-    val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     val numActors = parseOptIntDefault(args,"--numactors=", 1000)
     val port = parseOptIntDefault(args,"--listenport=", 16873)
     val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
@@ -47,7 +46,6 @@ object Node {
     println("---------------------------------------------------------------------")
     println("Localhost name: " + LocalHostName)
     println("Listen port is " + port)
-    println("Mode (connect and listen) " + mode)
     println("NumActors= " + numActors)
     println("RunTime = " + runTime)
     println("NumRuns = " + numRuns)
@@ -58,7 +56,7 @@ object Node {
     
     ExpDir.mkdirs()
 
-    val run = new Run(delayTime, ExpDir, port, mode, nodes.map(h => scala.actors.remote.Node(h, port).canonicalForm).toArray, numActors, runTime)
+    val run = new Run(delayTime, ExpDir, port, nodes.map(h => scala.actors.remote.Node(InetAddress.getByName(h).getCanonicalHostName, port)).toArray, numActors, runTime)
     run.execute(numRuns)
 
 
@@ -68,7 +66,7 @@ object Node {
   case object START
   case object COLLECT
 
-  class Run(delayTime: Int, ExpDir: File, port: Int, mode: ServiceMode.Value, nodes: Array[Node], numActors: Int, runTime: Int) {
+  class Run(delayTime: Int, ExpDir: File, port: Int, nodes: Array[Node], numActors: Int, runTime: Int) {
     val ExpName = ExpDir.getName
 
     val messageSize = 16 
@@ -105,7 +103,7 @@ object Node {
       private def sendNextMsg() {
         val nextN = nextNode()
         val nextSym = nextSymbol()
-        val server = select(nextN, nextSym, serviceMode = mode) // use java serialization
+        val server = select(nextN, nextSym) // use java serialization
         val msg = NodeMessage(message, 
                               System.nanoTime, 
                               FromActor(LocalHostName, ThisSymbol),
@@ -123,7 +121,7 @@ object Node {
       var started = false
 
       override def act() {
-        alive(port, serviceMode = mode)
+        alive(port)
         register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
         loop {
