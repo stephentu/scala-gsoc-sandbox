@@ -37,6 +37,7 @@ object Node {
     val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
     val nodes = parseOptListDefault(args, "--nodes=", DefaultNodes)
+    val delayTime = parseOptIntDefault(args, "--delaytime=", 10000) // wait 10 seconds before starting
 
     val expname = parseOptStringDefault(args, "--expname=", "results_nodetest")
 
@@ -54,37 +55,10 @@ object Node {
     println("---------------------------------------------------------------------")
     println()
 
-    val announcer = actor {
-      alive(port, mode)
-      register('announcer, self)
-      loop { 
-        react { 
-          case StopAnnouncer =>
-            println("Announcer going down")
-            exit()
-          case e => sender ! e 
-        } 
-      }
-    }
-
-    println("Blocking until all nodes become available")
-    nodes.foreach(hostname => {
-      var continue = true
-      while (continue) {
-        try {
-          select(scala.actors.remote.Node(hostname, port), 'announcer) // make blocking conn here
-          continue = false
-        } catch {
-          case e: ConnectException =>
-            println("Waiting for node: " + hostname)
-            Thread.sleep(1000) // 1 second
-        }
-      }
-    })
     
     ExpDir.mkdirs()
 
-    val run = new Run(ExpDir, port, mode, nodes.map(h => scala.actors.remote.Node(h, port).canonicalForm).toArray, numActors, runTime)
+    val run = new Run(delayTime, ExpDir, port, mode, nodes.map(h => scala.actors.remote.Node(h, port).canonicalForm).toArray, numActors, runTime)
     run.execute(numRuns)
 
 
@@ -94,7 +68,7 @@ object Node {
   case object START
   case object COLLECT
 
-  class Run(ExpDir: File, port: Int, mode: ServiceMode.Value, nodes: Array[Node], numActors: Int, runTime: Int) {
+  class Run(delayTime: Int, ExpDir: File, port: Int, mode: ServiceMode.Value, nodes: Array[Node], numActors: Int, runTime: Int) {
     val ExpName = ExpDir.getName
 
     val messageSize = 16 
@@ -272,6 +246,9 @@ object Node {
           actor.start()
           actor
         }).toList
+
+      // do the delay, before starting, to wait for all nodes to come up
+      Thread.sleep(delayTime)
 
       (1 to numRuns).foreach(runId => {
         println("RUNID: " + runId)
