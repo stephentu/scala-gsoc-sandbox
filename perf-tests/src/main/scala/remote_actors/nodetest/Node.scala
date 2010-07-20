@@ -39,10 +39,21 @@ object Node {
     val nodes = parseOptListDefault(args, "--nodes=", DefaultNodes)
     val delayTime = parseOptIntDefault(args, "--delaytime=", 10000) // wait 10 seconds before starting
 
+    val ExpRootDir = 
+        if (containsOpt(args, "--expdir=")) Some(new File(parseOptString(args, "--expdir=")))
+        else None
+      
     val expname = parseOptStringDefault(args, "--expname=", "results_nodetest")
 
     val ExpId = System.currentTimeMillis
-    val ExpDir = new File(List(expname, ExpId).mkString("_"))
+    val ExpDir = ExpRootDir match {
+      case Some(rootDir) =>
+        new File(rootDir, List(expname, ExpId).mkString("_"))
+      case None =>
+        new File(List(expname, ExpId).mkString("_"))
+    }
+
+    ExpDir.mkdirs()
 
     println("---------------------------------------------------------------------")
     println("Localhost name: " + LocalHostName)
@@ -56,7 +67,6 @@ object Node {
     println()
 
     
-    ExpDir.mkdirs()
 
     val run = new Run(delayTime, ExpDir, ports, mode, nodes.flatMap(h => ports.map(p => scala.actors.remote.Node(h, p).canonicalForm)).toArray, numActors, runTime)
     run.execute(numRuns)
@@ -136,11 +146,14 @@ object Node {
               msgsRecv = 0
               numTimeouts = 0
               timer.start()
+              Debug.info(this + ": starting run " + runId)
               started = true
               sendNextMsg()
             case TIMEOUT if (started) =>
               numTimeouts += 1
               sendNextMsg()
+            case TIMEOUT if (!started) =>
+              Debug.info(this + ": TIMEOUT, but not started")
             case m @ NodeMessage(recvMessage, 
                                  _, 
                                  FromActor(LocalHostName, ThisSymbol),
@@ -162,8 +175,8 @@ object Node {
               // we've received a message which was echoed back to us, but we
               // did not send it out this round
               // most likely comes from previous rounds
-              //System.err.println(this + ": expecting: recvHostName: " + LocalHostName + ", runId: " + runId + ", recvId: " + id + ", recvI: " + msgsRecv)
-              //System.err.println("BUG: " + m)
+              Debug.info(this + ": expecting: recvHostName: " + LocalHostName + ", runId: " + runId + ", recvId: " + id + ", recvI: " + msgsRecv)
+              Debug.info("BUG: " + m)
             case STOP if (started) =>
               //println("actor " + id + " received STOP")
               // time is up
@@ -201,7 +214,7 @@ object Node {
               started = false
               sender ! Results(runId, msgsSent, msgsRecv, numTimeouts)               
             case e => 
-              //System.err.println(this + ": RECEIVED UNKNOWN MESSAGE: " + e + " from proxy: " + sender)
+              Debug.info(this + ": RECEIVED UNKNOWN MESSAGE: " + e + " from proxy: " + sender)
           }
         }
       }
