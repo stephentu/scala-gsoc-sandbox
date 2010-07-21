@@ -33,7 +33,6 @@ object Node {
     Debug.level = level
     val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     val numActors = parseOptIntDefault(args,"--numactors=", 1000)
-    val port = parseOptIntDefault(args,"--listenport=", 16873)
     val ports = parseOptList(args,"--ports=").map(_.toInt)
     val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
@@ -43,11 +42,10 @@ object Node {
     val expname = parseOptStringDefault(args, "--expname=", "results_nodetest")
 
     val ExpId = System.currentTimeMillis
-    val ExpDir = new File(List(expname, port, ExpId).mkString("_"))
+    val ExpDir = new File(List(expname, ExpId).mkString("_"))
 
     println("---------------------------------------------------------------------")
     println("Localhost name: " + LocalHostName)
-    println("Listen port is " + port)
     println("Ports: " + ports)
     println("Mode (connect and listen) " + mode)
     println("NumActors= " + numActors)
@@ -60,7 +58,7 @@ object Node {
     
     ExpDir.mkdirs()
 
-    val run = new Run(delayTime, ExpDir, port, mode, nodes.flatMap(h => ports.map(p => scala.actors.remote.Node(h, p).canonicalForm)).toArray, numActors, runTime)
+    val run = new Run(delayTime, ExpDir, ports, mode, nodes.flatMap(h => ports.map(p => scala.actors.remote.Node(h, p).canonicalForm)).toArray, numActors, runTime)
     run.execute(numRuns)
 
 
@@ -70,7 +68,7 @@ object Node {
   case object START
   case object COLLECT
 
-  class Run(delayTime: Int, ExpDir: File, port: Int, mode: ServiceMode.Value, nodes: Array[Node], numActors: Int, runTime: Int) {
+  class Run(delayTime: Int, ExpDir: File, ports: List[Int], mode: ServiceMode.Value, nodes: Array[Node], numActors: Int, runTime: Int) {
     val ExpName = ExpDir.getName
 
     val messageSize = 16 
@@ -125,7 +123,7 @@ object Node {
       var started = false
 
       override def act() {
-        alive(port, serviceMode = mode)
+        ports.foreach(port => alive(port, serviceMode = mode))
         register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
         loop {
