@@ -137,7 +137,7 @@ object Node {
         register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
         loop {
-          reactWithin(5000) {
+          reactWithin(10000) {
             case START if (!started) =>
               timer = new Timer
               roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
