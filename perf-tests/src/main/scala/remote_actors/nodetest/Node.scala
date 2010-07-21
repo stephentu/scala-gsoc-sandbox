@@ -34,6 +34,7 @@ object Node {
     val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     val numActors = parseOptIntDefault(args,"--numactors=", 1000)
     val port = parseOptIntDefault(args,"--listenport=", 16873)
+    val ports = parseOptList(args,"--ports=").map(_.toInt)
     val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
     val nodes = parseOptListDefault(args, "--nodes=", DefaultNodes)
@@ -42,11 +43,12 @@ object Node {
     val expname = parseOptStringDefault(args, "--expname=", "results_nodetest")
 
     val ExpId = System.currentTimeMillis
-    val ExpDir = new File(expname + "_" + ExpId)
+    val ExpDir = new File(List(expname, port, ExpId).mkString("_"))
 
     println("---------------------------------------------------------------------")
     println("Localhost name: " + LocalHostName)
     println("Listen port is " + port)
+    println("Ports: " + ports)
     println("Mode (connect and listen) " + mode)
     println("NumActors= " + numActors)
     println("RunTime = " + runTime)
@@ -58,7 +60,7 @@ object Node {
     
     ExpDir.mkdirs()
 
-    val run = new Run(delayTime, ExpDir, port, mode, nodes.map(h => scala.actors.remote.Node(h, port).canonicalForm).toArray, numActors, runTime)
+    val run = new Run(delayTime, ExpDir, port, mode, nodes.flatMap(h => ports.map(p => scala.actors.remote.Node(h, p).canonicalForm)).toArray, numActors, runTime)
     run.execute(numRuns)
 
 
@@ -219,7 +221,7 @@ object Node {
             <actorid>{id}</actorid>
             <runtime>{runTime}</runtime>
             <numruns>{numRuns}</numruns>
-            <nodes>{nodes.map(node => <node>{node.address}</node>)}</nodes>
+            <nodes>{nodes.map(node => <node>{node.address + ":" + node.port}</node>)}</nodes>
             <messagepayloadsize units="bytes">{messageSize}</messagepayloadsize>
             <messagesize units="bytes">{actualMsgSize}</messagesize>
           </metadata>
@@ -234,7 +236,7 @@ object Node {
           <numactors>{numActors}</numactors>
           <runtime>{runTime}</runtime>
           <numruns>{numRuns}</numruns>
-          <nodes>{nodes.map(node => <node>{node.address}</node>)}</nodes>
+          <nodes>{nodes.map(node => <node>{node.address + ":" + node.port}</node>)}</nodes>
           <messagepayloadsize units="bytes">{messageSize}</messagepayloadsize>
           <messagesize units="bytes">{actualMsgSize}</messagesize>
         </metadata>
