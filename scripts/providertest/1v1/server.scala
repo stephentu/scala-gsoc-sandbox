@@ -11,7 +11,7 @@ object Server {
     Debug.info("New connection received: " + conn)
   }
 
-  def receive(conn: Connection, bytes: Array[Byte]) {
+  def receive(conn: ByteConnection, bytes: Array[Byte]) {
     Debug.info("Received " + bytes.size + " bytes from " + conn)
     val message = new String(bytes) 
     Debug.info("message: " + message)
