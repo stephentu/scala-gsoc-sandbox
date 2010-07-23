@@ -65,15 +65,36 @@ object PBufInternalConverters {
     case ServiceMode.Blocking => PBufServiceMode.BLOCKING
     case ServiceMode.NonBlocking => PBufServiceMode.NON_BLOCKING
   }
-  val NodeClass = classOf[Node]
-  val LocatorClass = classOf[Locator]
-  val NamedSendClass = classOf[NamedSend]
-  val ProxyClass = classOf[Proxy]
+	implicit def fromPBufRemoteStartInvoke(pbufRsi: PBufRemoteStartInvoke): RemoteStartInvoke = 
+		RemoteStartInvoke(pbufRsi.getActorClass)
+	implicit def toPBufRemoteStartInvoke(rsi: RemoteStartInvoke): PBufRemoteStartInvoke = 
+		PBufRemoteStartInvoke.newBuilder
+			.setActorClass(rsi.actorClass)
+			.build
+	implicit def fromPBufRemoteStartInvokeAndListen(pbufRsil: PBufRemoteStartInvokeAndListen): RemoteStartInvokeAndListen = 
+		RemoteStartInvokeAndListen(pbufRsil.getActorClass,
+															 pbufRsil.getPort,
+															 pbufRsil.getName,
+															 pbufRsil.getMode)
+	implicit def toPBufRemoteStartInvokeAndListen(rsil: RemoteStartInvokeAndListen): PBufRemoteStartInvokeAndListen = 
+		PBufRemoteStartInvokeAndListen.newBuilder
+			.setActorClass(rsil.actorClass)
+			.setPort(rsil.port)
+		  .setName(rsil.name)
+			.setMode(rsil.mode)
+			.build
 
-  val PBufNodeClass = classOf[PBufNode]
-  val PBufLocatorClass = classOf[PBufLocator]
-  val PBufNamedSendClass = classOf[PBufNamedSend]
-  val PBufProxyClass = classOf[PBufProxy]
+  val NodeClass      = classOf[Node]
+  val LocatorClass   = classOf[Locator]
+  val NamedSendClass = classOf[NamedSend]
+  val ProxyClass     = classOf[Proxy]
+
+  val PBufNodeClass                       = classOf[PBufNode]
+  val PBufLocatorClass                    = classOf[PBufLocator]
+  val PBufNamedSendClass                  = classOf[PBufNamedSend]
+  val PBufProxyClass                      = classOf[PBufProxy]
+  val PBufRemoteStartInvokeClass          = classOf[PBufRemoteStartInvoke]
+  val PBufRemoteStartInvokeAndListenClass = classOf[PBufRemoteStartInvokeAndListen]
 }
 
 
@@ -81,6 +102,7 @@ class ProtobufSerializer
   extends Serializer[DefaultProxyImpl]
   with    IdResolvingSerializer
   with    DefaultEnvelopeMessageCreator
+  with    DefaultControllerMessageCreator
   with    DefaultProxyCreator {
 
   import PBufInternalConverters._
@@ -90,11 +112,13 @@ class ProtobufSerializer
 
   override def serializeMetaData(message: AnyRef): Option[Array[Byte]] = {
     val c = message match {
-      case m: Message => m.getClass.getName
-      case n: Node => PBufNodeClass.getName
-      case l: Locator => PBufLocatorClass.getName
-      case n: NamedSend => PBufNamedSendClass.getName
-      case p: Proxy => PBufProxyClass.getName
+      case m: Message                    => m.getClass.getName
+      case _: Node                       => PBufNodeClass.getName
+      case _: Locator                    => PBufLocatorClass.getName
+      case _: NamedSend                  => PBufNamedSendClass.getName
+      case _: Proxy                      => PBufProxyClass.getName
+      case _: RemoteStartInvokeAndListen => PBufRemoteStartInvokeAndListenClass.getName
+      case _: RemoteStartInvoke          => PBufRemoteStartInvokeClass.getName
     }
     Some(c.getBytes)
   }
@@ -110,6 +134,10 @@ class ProtobufSerializer
       toPBufNamedSend(namedSend).toByteArray
     case proxy: Proxy =>
       toPBufProxy(proxy).toByteArray
+		case rsil: RemoteStartInvokeAndListen =>
+			toPBufRemoteStartInvokeAndListen(rsil).toByteArray
+		case rsi: RemoteStartInvoke =>
+			toPBufRemoteStartInvoke(rsi).toByteArray
   }
 
   protected def handleMetaData(metaData: Option[Array[Byte]]): Class[_] = metaData match {
@@ -130,6 +158,10 @@ class ProtobufSerializer
       fromPBufNamedSend(PBufNamedSend.parseFrom(message))
     case PBufProxyClass =>
       fromPBufProxy(PBufProxy.parseFrom(message))
+		case PBufRemoteStartInvokeClass =>
+			fromPBufRemoteStartInvoke(PBufRemoteStartInvoke.parseFrom(message))
+		case PBufRemoteStartInvokeAndListenClass =>
+			fromPBufRemoteStartInvokeAndListen(PBufRemoteStartInvokeAndListen.parseFrom(message))
     case messageClz if (MessageClass.isAssignableFrom(messageClz)) =>
       // TODO: do this the "right way" for pbuf
       val parseFromMethod = clz.getDeclaredMethod("parseFrom", classOf[Array[Byte]])

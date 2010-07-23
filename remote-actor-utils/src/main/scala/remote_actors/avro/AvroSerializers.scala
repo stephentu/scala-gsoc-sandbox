@@ -18,7 +18,8 @@ import RemoteActor._
 /** Avro version of internal classes */
 case class AvroNode(var _address: String, var _port: Int) extends Node with AvroRecord {
   override def address = _address
-  override def port = _port
+  override def port    = _port
+
   override def newNode(a: String, p: Int) = AvroNode(a, p)
 }
 
@@ -32,23 +33,23 @@ case class AvroNamedSend(var _senderLoc: AvroLocator,
                          var _metaData: Option[Array[Byte]],
                          var _data: Array[Byte],
                          var _session: String) extends NamedSend with AvroRecord {
-  override def senderLoc = _senderLoc
+  override def senderLoc   = _senderLoc
   override def receiverLoc = _receiverLoc
-  override def metaData = _metaData.getOrElse(null)
-  override def data = _data
-  override def session = Symbol(_session)
+  override def metaData    = _metaData.getOrElse(null)
+  override def data        = _data
+  override def session     = Symbol(_session)
 }
 
 object AvroServiceMode {
   // substitute for the ServiceMode enum
   val Blocking    = 0
   val NonBlocking = 1
-  def intToMode(i: Int): ServiceMode.Value = i match {
+  implicit def intToMode(i: Int): ServiceMode.Value = i match {
     case Blocking    => ServiceMode.Blocking
     case NonBlocking => ServiceMode.NonBlocking
   }
-  def modeToInt(m: ServiceMode.Value): Int = m match {
-    case ServiceMode.Blocking => Blocking
+  implicit def modeToInt(m: ServiceMode.Value): Int = m match {
+    case ServiceMode.Blocking    => Blocking
     case ServiceMode.NonBlocking => NonBlocking
   }
 }
@@ -57,10 +58,30 @@ case class AvroProxy(var _remoteNode: AvroNode,
                      var _mode: Int,
                      var _serializerClassName: String,
                      var _name: String) extends Proxy with AvroRecord {
-  override def remoteNode = _remoteNode
-  override def mode = AvroServiceMode.intToMode(_mode) 
+  import AvroServiceMode._
+
+  override def remoteNode          = _remoteNode
+  override def mode                = _mode
   override def serializerClassName = _serializerClassName
-  override def name = Symbol(_name)
+  override def name                = Symbol(_name)
+}
+
+case class AvroRemoteStartInvoke(var _actorClass: String) 
+  extends RemoteStartInvoke with AvroRecord {
+  override def actorClass = _actorClass
+}
+
+case class AvroRemoteStartInvokeAndListen(var _actorClass: String,
+                                          var _port: Int,
+                                          var _name: String,
+                                          var _mode: Int) 
+  extends RemoteStartInvokeAndListen with AvroRecord {
+  import AvroServiceMode._
+  
+  override def actorClass = _actorClass
+  override def port       = _port
+  override def name       = Symbol(_name)
+  override def mode       = _mode
 }
 
 class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) extends SpecificDatumReader[T](schema) {
@@ -86,9 +107,23 @@ trait AvroEnvelopeMessageCreator { this: Serializer[Proxy] =>
 
 }
 
+trait AvroControllerMessageCreator { this: Serializer[Proxy] =>
+  override type MyRemoteStartInvoke = AvroRemoteStartInvoke
+  override type MyRemoteStartInvokeAndListen = AvroRemoteStartInvokeAndListen
+
+  import AvroServiceMode._
+
+  override def newRemoteStartInvoke(actorClass: String): AvroRemoteStartInvoke = 
+    AvroRemoteStartInvoke(actorClass)
+
+  override def newRemoteStartInvokeAndListen(actorClass: String, port: Int, name: Symbol, mode: ServiceMode.Value): AvroRemoteStartInvokeAndListen =
+    AvroRemoteStartInvokeAndListen(actorClass, port, name.name, mode)
+}
+
 abstract class BasicSpecificAvroSerializer 
   extends Serializer[AvroProxy]
-  with    AvroEnvelopeMessageCreator {
+  with    AvroEnvelopeMessageCreator
+  with    AvroControllerMessageCreator {
 
   override def serializeMetaData(message: AnyRef): Option[Array[Byte]] = Some(serializeClassName(message))
 

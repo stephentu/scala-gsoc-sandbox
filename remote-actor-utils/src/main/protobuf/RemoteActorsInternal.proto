@@ -29,3 +29,14 @@ message PBufProxy {
   required string          serializerClassName = 3;
   required string          name                = 4;
 }
+
+message PBufRemoteStartInvoke {
+  required string actorClass = 1;
+}
+
+message PBufRemoteStartInvokeAndListen {
+  required string          actorClass = 1;
+  required int32           port       = 2;
+  required string          name       = 3;
+  required PBufServiceMode mode       = 4;
+}
