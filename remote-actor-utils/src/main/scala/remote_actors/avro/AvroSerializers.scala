@@ -15,6 +15,14 @@ import Actor._
 import remote._
 import RemoteActor._
 
+abstract class HasMultiClassAvroSerializer extends Configuration[AvroProxy] { 
+  override def newSerializer() = new MultiClassSpecificAvroSerializer
+}
+
+abstract class HasSingleClassAvroSerializer[R <: SpecificRecord : Manifest] extends Configuration[AvroProxy] { 
+  override def newSerializer() = new SingleClassSpecificAvroSerializer[R]
+}
+
 /** Avro version of internal classes */
 case class AvroNode(var _address: String, var _port: Int) extends Node with AvroRecord {
   override def address = _address
@@ -193,13 +201,15 @@ object SingleClassSpecificAvroSerializer {
   val AvroProxyClass = classOf[AvroProxy]
 }
 
-abstract class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) 
+class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) 
   extends BasicSpecificAvroSerializer {
   import SingleClassSpecificAvroSerializer._
 
   private val RecordClass = m.erasure.asInstanceOf[Class[R]]
   private val schema = RecordClass.newInstance.getSchema
   private var cachedResolverObj: AnyRef = _
+
+  override def uniqueId = 987643972L
 
   override def initialState: Option[Any] = Some(SendMySchema)
 
