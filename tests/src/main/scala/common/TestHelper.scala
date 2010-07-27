@@ -34,6 +34,7 @@ object TestHelper {
       latch.await()
     }
     finishedLatch.await()
+    println("startActor(): woke up from latch")
   }
 
   def withResources(f: => Unit) {
