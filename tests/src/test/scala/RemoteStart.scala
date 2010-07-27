@@ -20,6 +20,7 @@ class EchoActor extends Actor {
       react {
         case "STOP" =>
           println("Stopping")
+          sender ! "ACK"
           exit()
         case e =>
           println("Got: " + e)
@@ -64,13 +65,13 @@ class RemoteStartTest extends AssertionsForJUnit {
   class RemoteStartAndListener(implicit cfg: Configuration[Proxy]) extends JUnitActor {
     override def act() {
       defaultActor {
-        remoteStartAndListen[EchoActorNoAlive, Proxy]("localhost", 9100, 'echoactor) 
-        val e = select(Node(null, 9100), 'echoactor)
+        val e = remoteStartAndListen[EchoActorNoAlive, Proxy]("localhost", 9100, 'echoactor) 
         e ! "Hello"
         receive { case m => 
           assert(m === "Hello")
         }
-        e ! "STOP"
+        val ftch = e !! "STOP" 
+        assert(ftch() === "ACK")
       }
     }
   }
@@ -89,7 +90,9 @@ class RemoteStartTest extends AssertionsForJUnit {
     withResources {
       println("RemoteStartAndListen Test")
       implicit val cfg = new DefaultConfiguration
-      startActors(List(new RemoteStartAndListener))
+      val actor = new RemoteStartAndListener
+      alive(9100, actor) 
+      startActors(List(actor))
     }
   }
 }
