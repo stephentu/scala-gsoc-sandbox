@@ -12,12 +12,12 @@
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
-            <version>2.8.0-gsoc-SNAPSHOT</version>
+            <version>2.8.0-gsoc-api-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-compiler</artifactId>
-            <version>2.8.0-gsoc-SNAPSHOT</version>
+            <version>2.8.0-gsoc-api-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.googlecode</groupId>
@@ -38,6 +38,16 @@
             <groupId>com.googlecode</groupId>
             <artifactId>remote-actors-util</artifactId>
             <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.8.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scalatest</groupId>
+            <artifactId>scalatest</artifactId>
+            <version>1.2</version>
         </dependency>
     </dependencies>
     <repositories>

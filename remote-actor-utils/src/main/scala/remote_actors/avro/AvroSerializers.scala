@@ -40,12 +40,12 @@ case class AvroNamedSend(var _senderLoc: AvroLocator,
                          var _receiverLoc: AvroLocator,
                          var _metaData: Option[Array[Byte]],
                          var _data: Array[Byte],
-                         var _session: String) extends NamedSend with AvroRecord {
+                         var _session: Option[String]) extends NamedSend with AvroRecord {
   override def senderLoc   = _senderLoc
   override def receiverLoc = _receiverLoc
   override def metaData    = _metaData.getOrElse(null)
   override def data        = _data
-  override def session     = Symbol(_session)
+  override def session     = _session.map(Symbol(_)) 
 }
 
 object AvroServiceMode {
@@ -92,6 +92,32 @@ case class AvroRemoteStartInvokeAndListen(var _actorClass: String,
   override def mode       = _mode
 }
 
+object AvroRemoteFunction {
+  val LinkTo     = 0
+  val UnlinkFrom = 1
+  val Exit       = 2
+  def intToRemoteFunction(i: Int, r: Option[String]): RemoteFunction = i match {
+    case LinkTo     => LinkToFun
+    case UnlinkFrom => UnlinkFromFun
+    case Exit       => ExitFun(r.getOrElse("No Reason"))
+  }
+  def remoteFunctionToInt(r: RemoteFunction): (Int, Option[String]) = r match {
+    case LinkToFun       => (LinkTo, None)
+    case UnlinkFromFun   => (UnlinkFrom, None)
+    case ExitFun(reason) => (Exit, Some(reason.toString))
+  }
+}
+
+case class AvroRemoteApply(var _senderLoc: AvroLocator,
+                           var _receiverLoc: AvroLocator,
+                           var _function: Int,
+                           var _reason: Option[String]) extends RemoteApply with AvroRecord {
+  import AvroRemoteFunction._
+  override def senderLoc   = _senderLoc
+  override def receiverLoc = _receiverLoc
+  override def function    = intToRemoteFunction(_function, _reason) 
+}
+
 class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) extends SpecificDatumReader[T](schema) {
   private val clz = m.erasure.asInstanceOf[Class[T]]
   override def newRecord(old: AnyRef, schema: Schema): AnyRef = {
@@ -101,22 +127,28 @@ class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T]) exten
 }
 
 trait AvroEnvelopeMessageCreator { this: Serializer[Proxy] => 
-  override type MyNode = AvroNode
-  override type MyNamedSend = AvroNamedSend
-  override type MyLocator = AvroLocator
+  override type MyNode        = AvroNode
+  override type MyNamedSend   = AvroNamedSend
+  override type MyLocator     = AvroLocator
+  override type MyRemoteApply = AvroRemoteApply
 
   override def newNode(address: String, port: Int): AvroNode = AvroNode(address, port)
 
-  override def newNamedSend(senderLoc: AvroLocator, receiverLoc: AvroLocator, metaData: Array[Byte], data: Array[Byte], session: Symbol): AvroNamedSend =
-    AvroNamedSend(senderLoc, receiverLoc, if (metaData eq null) None else Some(metaData), data, session.name)
+  override def newNamedSend(senderLoc: AvroLocator, receiverLoc: AvroLocator, metaData: Array[Byte], data: Array[Byte], session: Option[Symbol]): AvroNamedSend =
+    AvroNamedSend(senderLoc, receiverLoc, if (metaData eq null) None else Some(metaData), data, session.map(_.name))
 
   override def newLocator(node: AvroNode, name: Symbol): AvroLocator =
     AvroLocator(node, name.name)
 
+  override def newRemoteApply(senderLoc: AvroLocator, receiverLoc: AvroLocator, rfun: RemoteFunction): AvroRemoteApply = {
+    import AvroRemoteFunction._
+    val (funid, reason) = remoteFunctionToInt(rfun)
+    AvroRemoteApply(senderLoc, receiverLoc, funid, reason)
+  }
 }
 
 trait AvroControllerMessageCreator { this: Serializer[Proxy] =>
-  override type MyRemoteStartInvoke = AvroRemoteStartInvoke
+  override type MyRemoteStartInvoke          = AvroRemoteStartInvoke
   override type MyRemoteStartInvokeAndListen = AvroRemoteStartInvokeAndListen
 
   import AvroServiceMode._
@@ -195,10 +227,10 @@ object SingleClassSpecificAvroSerializer {
   case object SendMySchema
   case object ExpectOtherSchema
 
-  val AvroNodeClass = classOf[AvroNode]
-  val AvroLocatorClass = classOf[AvroLocator]
+  val AvroNodeClass      = classOf[AvroNode]
+  val AvroLocatorClass   = classOf[AvroLocator]
   val AvroNamedSendClass = classOf[AvroNamedSend]
-  val AvroProxyClass = classOf[AvroProxy]
+  val AvroProxyClass     = classOf[AvroProxy]
 }
 
 class SingleClassSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) 

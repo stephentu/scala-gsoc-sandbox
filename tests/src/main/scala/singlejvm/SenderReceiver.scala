@@ -19,8 +19,15 @@ object SenderReceiver {
       receive {
         case m @ "Message 2" => 
           println("Got resp back")
+          sender.send(m, remoteSelf)
+      }
+      receive {
+        case m @ "Message 3" =>
+          println(m + "received")
           sender ! m
       }
+      two ! Stop
+      println("DONE")
     }
   }
 
@@ -40,10 +47,15 @@ object SenderReceiver {
           case m @ "Message 2" =>
             println(m + " received")
             sender.receiver !? m match {
-              case Some(resp) =>
-                println("Got ack")
-              case None =>
-                println("ERROR")
+              case "Message 2" => println("Got ack")
+              case _ => println("ERROR")
+            }
+            val ftch = sender.receiver !! "Message 3"
+            ftch respond { msg =>
+              msg match {
+                case "Message 3" => println("Got ack")
+                case _ => println("ERROR")
+              }
             }
         }
       }

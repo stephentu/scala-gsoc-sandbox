@@ -37,14 +37,14 @@ object PBufInternalConverters {
       .setReceiverLoc(namedSend.receiverLoc)
       .setMetaData(namedSend.metaData)
       .setData(namedSend.data)
-      .setSession(namedSend.session)
+      .setSession(namedSend.session.map(_.name).orNull)
       .build
   implicit def fromPBufNamedSend(pbufNamedSend: PBufNamedSend): NamedSend = 
     NamedSend(pbufNamedSend.getSenderLoc, 
               pbufNamedSend.getReceiverLoc,
               pbufNamedSend.getMetaData,
               pbufNamedSend.getData,
-              pbufNamedSend.getSession)
+              Option(pbufNamedSend.getSession))
   implicit def toPBufProxy(proxy: Proxy): PBufProxy =
     PBufProxy.newBuilder
       .setRemoteNode(proxy.remoteNode)
