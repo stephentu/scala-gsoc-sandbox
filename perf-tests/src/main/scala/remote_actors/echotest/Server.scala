@@ -12,8 +12,12 @@ object Server {
   def main(args: Array[String]) {
     val port = parseOptIntDefault(args, "--port=", 9000)
     val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
+    implicit object cfg extends Configuration[DefaultProxyImpl] with HasJavaSerializer {
+      override def aliveMode  = mode
+      override def selectMode = mode
+    }
     actor {
-      alive(port, mode)
+      alive(port)
       register('server, self)
       println("Actor registered on port: " + port + " in mode: " + mode)
       loop {

@@ -65,12 +65,17 @@ case object STOP
 
 class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActors: Int, runTime: Int) {
 
+  implicit object cfg extends Configuration[DefaultProxyImpl] with HasJavaSerializer {
+    override def aliveMode  = mode
+    override def selectMode = mode
+  }
+
   class RunActor(id: Int, writer: PrintWriter, messageSize: Int, actualMsgSize: Long, message: Array[Byte], messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {
     override def exceptionHandler: PartialFunction[Exception, Unit] = {
       case e: Exception => errorCallback(e)
     }
     override def act() {
-      val server = select(Node(host, port), 'server, serviceMode = mode) // use java serialization
+      val server = select(Node(host, port), 'server) // use java serialization
       var i = 0
       val roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
       val timer = new Timer

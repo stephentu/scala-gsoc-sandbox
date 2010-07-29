@@ -81,6 +81,11 @@ object Node {
                                                                  0, 
                                                                  false))
 
+    implicit object cfg extends Configuration[DefaultProxyImpl] with HasJavaSerializer {
+      override def aliveMode  = mode
+      override def selectMode = mode
+    }
+
     class RunActor(id: Int, writer: PrintWriter) extends Actor {
       override def exceptionHandler: PartialFunction[Exception, Unit] = {
         case e: Exception => e.printStackTrace()
@@ -105,7 +110,7 @@ object Node {
       private def sendNextMsg() {
         val nextN = nextNode()
         val nextSym = nextSymbol()
-        val server = select(nextN, nextSym, serviceMode = mode) // use java serialization
+        val server = select(nextN, nextSym)
         val msg = NodeMessage(message, 
                               System.nanoTime, 
                               FromActor(LocalHostName, ThisSymbol),
@@ -123,7 +128,7 @@ object Node {
       var started = false
 
       override def act() {
-        ports.foreach(port => alive(port, serviceMode = mode))
+        ports.foreach(port => alive(port))
         register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
         loop {
