@@ -108,8 +108,9 @@ object Node {
         case e: Exception => 
           System.err.println(this + ": Caught exception: " + e.getMessage)
           e.printStackTrace()
-          System.exit(1)
+          numExceptions += 1
       }
+      var numExceptions = 0
       val random = new scala.util.Random
       def nextNode() = {
         val idx = random.nextInt(nodes.length)
@@ -144,6 +145,7 @@ object Node {
         lastMsg = msg
         Log.debug(this + ": Sending message: " + msg + " to actor: " + nextSym + " with proxy: " + server)
         server ! msg  
+        lastMsgSent = System.currentTimeMillis
         msgsSent += 1
       }
 
@@ -151,12 +153,19 @@ object Node {
       val roundTripTimes: ArrayBuffer[Long] = new ArrayBuffer[Long] 
       var started = false
 
+      var lastMsgSent = System.currentTimeMillis
+      var timeoutLength = 5000 // 5 second timeout
+
       override def act() {
+        import scala.math.max
         ports.foreach(port => alive(port))
         register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
         loop {
-          reactWithin(60000) {
+          val waitTime = if (started)
+            max(0, (lastMsgSent + timeoutLength) - System.currentTimeMillis)
+          else Integer.MAX_VALUE
+          reactWithin(waitTime) {
             case START if (!started) =>
               timer = new Timer
               roundTripTimes.clear() // stored in NS
@@ -233,6 +242,7 @@ object Node {
                   <timeouts>
                     {timeoutNodes.map(t => <node>{t.machine}</node>)}
                   </timeouts>
+                  <numexceptions>{numExceptions}</numexceptions>
                 </execution>
               writer.println(xml.toString)
               writer.flush()
