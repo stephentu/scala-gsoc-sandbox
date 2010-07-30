@@ -28,10 +28,16 @@ object ProviderTest {
   def main(args: Array[String]) {
 
     val provider = 
-      if (containsOpt(args, "--nio")) 
+      if (containsOpt(args, "--nio")) {
+        println("Using NIO provider")
         new NonBlockingServiceProvider 
-      else 
+      } else if (containsOpt(args, "--netty")) {
+        println("Using Netty provider")
+        new NettyServiceProvider
+      } else {
+        println("Using blocking provider")
         new BlockingServiceProvider 
+      }
 
     val numRuns = parseOptIntDefault(args,"--numruns=", 5)
     val runTime = parseOptIntDefault(args,"--runtime=", 1) // 10 minutes per run instance
