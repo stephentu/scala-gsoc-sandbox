@@ -78,21 +78,30 @@ class RemoteStartTest extends AssertionsForJUnit {
   @Before def initialize() {
     setExplicitTermination(true)
   }
+  private def withController(f: => Unit) {
+    startController()
+    Thread.sleep(1000)
+    f
+    stopController()
+  }
   @Test def remoteStartTest() {
     withResources {
       println("RemoteStart Test")
-      Debug.level = 3
-      implicit val cfg = new DefaultConfiguration
-      startActors(List(new RemoteStarter))
+      withController {
+        Debug.level = 3
+        implicit val cfg = new DefaultConfiguration
+        startActors(List(new RemoteStarter))
+      }
     }
   }
   @Test def remoteStartAndListenTest() {
     withResources {
       println("RemoteStartAndListen Test")
-      implicit val cfg = new DefaultConfiguration
-      val actor = new RemoteStartAndListener
-      alive(9100, actor) 
-      startActors(List(actor))
+      withController {
+        implicit val cfg = new DefaultConfiguration
+        val actor = new RemoteStartAndListener
+        startActors(List(actor))
+      }
     }
   }
 }

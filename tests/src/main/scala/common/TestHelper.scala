@@ -40,6 +40,7 @@ object TestHelper {
   def withResources(f: => Unit) {
     f
     releaseResources()
+    Thread.sleep(5000)
   }
 }
 
