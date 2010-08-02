@@ -3,10 +3,10 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 object Link {
-  class One(implicit cfg: Configuration[Proxy]) extends Actor {
+  class One(implicit cfg: Configuration) extends Actor {
     trapExit = true
     override def act() {
       val two = select(Node(null, 9100), 'two)
@@ -20,7 +20,7 @@ object Link {
     }
   }
 
-  class Two(ctrl: Actor)(implicit cfg: Configuration[Proxy]) extends Actor {
+  class Two(ctrl: Actor)(implicit cfg: Configuration) extends Actor {
     override def act() {
       alive(9100)
       register('two, self)

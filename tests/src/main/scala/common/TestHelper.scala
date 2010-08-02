@@ -39,7 +39,7 @@ object TestHelper {
 
   def withResources(f: => Unit) {
     f
-    releaseResources()
+    shutdown()
     Thread.sleep(5000)
   }
 }

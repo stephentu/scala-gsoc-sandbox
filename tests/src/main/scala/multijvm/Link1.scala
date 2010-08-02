@@ -3,7 +3,7 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 object Link1 {
   def main(args: Array[String]) {

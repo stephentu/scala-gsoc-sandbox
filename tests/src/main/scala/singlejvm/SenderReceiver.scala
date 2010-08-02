@@ -3,11 +3,11 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 object SenderReceiver {
   
-  class One(implicit cfg: Configuration[Proxy]) extends Actor {
+  class One(implicit cfg: Configuration) extends Actor {
     override def act() {
       val two = select(Node(null, 9100), 'two)
       two ! "Message 1"
@@ -19,7 +19,7 @@ object SenderReceiver {
       receive {
         case m @ "Message 2" => 
           println("Got resp back")
-          sender.send(m, remoteSelf)
+          sender.send(m, remoteActorFor(self))
       }
       receive {
         case m @ "Message 3" =>
@@ -31,7 +31,7 @@ object SenderReceiver {
     }
   }
 
-  class Two(ctrl: Actor)(implicit cfg: Configuration[Proxy]) extends Actor {
+  class Two(ctrl: Actor)(implicit cfg: Configuration) extends Actor {
     override def act() {
       alive(9100)
       register('two, self)

@@ -3,7 +3,7 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 import TestHelper._
 
@@ -48,7 +48,7 @@ class EchoActorNoAlive extends Actor {
 
 
 class RemoteStartTest extends AssertionsForJUnit {
-  class RemoteStarter(implicit cfg: Configuration[Proxy]) extends JUnitActor {
+  class RemoteStarter(implicit cfg: Configuration) extends JUnitActor {
     override def act() {
       defaultActor {
         remoteStart[EchoActor]("localhost") 
@@ -62,10 +62,10 @@ class RemoteStartTest extends AssertionsForJUnit {
       }
     }
   }
-  class RemoteStartAndListener(implicit cfg: Configuration[Proxy]) extends JUnitActor {
+  class RemoteStartAndListener(implicit cfg: Configuration) extends JUnitActor {
     override def act() {
       defaultActor {
-        val e = remoteStartAndListen[EchoActorNoAlive, Proxy]("localhost", 9100, 'echoactor) 
+        val e = remoteStartAndListen[EchoActorNoAlive]("localhost", 9100, 'echoactor) 
         e ! "Hello"
         receive { case m => 
           assert(m === "Hello")
@@ -76,13 +76,12 @@ class RemoteStartTest extends AssertionsForJUnit {
     }
   }
   @Before def initialize() {
-    setExplicitTermination(true)
+    setExplicitShutdown(true)
   }
   private def withController(f: => Unit) {
-    startController()
+    startRemoteStartListener()
     Thread.sleep(1000)
     f
-    stopController()
   }
   @Test def remoteStartTest() {
     withResources {

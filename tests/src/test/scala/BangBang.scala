@@ -3,7 +3,7 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 import com.googlecode.avro.marker._
 import remote_actors.avro._
@@ -71,14 +71,14 @@ class BangBangTest extends AssertionsForJUnit {
     }
   }
 
-  class JavaSender(implicit cfg: Configuration[Proxy]) extends Sender with JavaMessageCreator
-  class JavaReceiver(implicit cfg: Configuration[Proxy]) extends Receiver with JavaMessageCreator
+  class JavaSender(implicit cfg: Configuration) extends Sender with JavaMessageCreator
+  class JavaReceiver(implicit cfg: Configuration) extends Receiver with JavaMessageCreator
 
-  class AvroSender(implicit cfg: Configuration[Proxy]) extends Sender with AvroMessageCreator
-  class AvroReceiver(implicit cfg: Configuration[Proxy]) extends Receiver with AvroMessageCreator
+  class AvroSender(implicit cfg: Configuration) extends Sender with AvroMessageCreator
+  class AvroReceiver(implicit cfg: Configuration) extends Receiver with AvroMessageCreator
 
   @Before def initialize() {
-    setExplicitTermination(true)
+    setExplicitShutdown(true)
   }
 
   @Test def bangBangTest() {
@@ -104,8 +104,7 @@ class BangBangTest extends AssertionsForJUnit {
     withResources {
       println("BangBang Avro Test")
       implicit val cfg = new HasMultiClassAvroSerializer with
-                        HasNonBlockingAlive with
-                        HasNonBlockingSelect
+                        HasNonBlockingMode
       startActors(List(new AvroReceiver, new AvroSender))
     }
   }

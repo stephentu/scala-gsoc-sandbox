@@ -3,7 +3,7 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 import java.util.concurrent.CountDownLatch
 

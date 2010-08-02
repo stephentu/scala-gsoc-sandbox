@@ -3,7 +3,7 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 import TestHelper._
 
@@ -13,7 +13,7 @@ import org.scalatest.junit._
 
 class BangQuestionLoopTest extends AssertionsForJUnit {
 
-  class Listener(implicit cfg: Configuration[Proxy]) extends JUnitActor {
+  class Listener(implicit cfg: Configuration) extends JUnitActor {
     override def act() {
       alive(9100)
       register('listener, self)
@@ -37,7 +37,7 @@ class BangQuestionLoopTest extends AssertionsForJUnit {
     }
   }
 
-  class Sender(implicit cfg: Configuration[Proxy]) extends JUnitActor {
+  class Sender(implicit cfg: Configuration) extends JUnitActor {
     override def act() {
       defaultActor {
         val l = select(Node(9100), 'listener)
@@ -51,7 +51,7 @@ class BangQuestionLoopTest extends AssertionsForJUnit {
   }
 
   @Before def initialize() {
-    setExplicitTermination(true)
+    setExplicitShutdown(true)
   }
 
   @Test def bangQuestionLoopTest() {

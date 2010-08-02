@@ -3,11 +3,11 @@ package localhost.test
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 object BangBang {
   
-  class One(implicit cfg: Configuration[Proxy]) extends Actor {
+  class One(implicit cfg: Configuration) extends Actor {
     override def act() {
       val two = select(Node(null, 9100), 'two)
       (1 to 5) foreach { i =>
@@ -19,7 +19,7 @@ object BangBang {
     }
   }
 
-  class Two(ctrl: Actor)(implicit cfg: Configuration[Proxy]) extends Actor {
+  class Two(ctrl: Actor)(implicit cfg: Configuration) extends Actor {
     override def act() {
       alive(9100)
       register('two, self)
