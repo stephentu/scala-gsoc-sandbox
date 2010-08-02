@@ -361,6 +361,9 @@ class SingleClassServerSpecificAvroSerializer
   private lazy val ServerProtocol = Schema.toString
   private lazy val ServerHash     = md5(ServerProtocol)
 
+  override def bootstrapClassName = 
+    throw new IllegalStateException("bootstrapClassName should never be called on the server side")
+
   override def handleNextEvent: PartialFunction[ReceivableEvent, Option[TriggerableEvent]] = {
     case StartEvent(n) =>
       node = Some(n)
@@ -384,11 +387,11 @@ class SingleClassServerSpecificAvroSerializer
                     }
                   }
                   if (hashEq) /** Both sides speaking the same schema */
-                    Some(SendEvent(toBytes(HandshakeResponse(BOTH, None, None))))
+                    Some(SendWithSuccessEvent(toBytes(HandshakeResponse(BOTH, None, None))))
                   else if (!hashEq && serverAware)
                     /** Client not aware of server's schema, but server aware
                      * of client's schema */
-                    Some(SendEvent(toBytes(HandshakeResponse(CLIENT, Some(ServerProtocol), Some(ServerHash)))))
+                    Some(SendWithSuccessEvent(toBytes(HandshakeResponse(CLIENT, Some(ServerProtocol), Some(ServerHash)))))
                   else
                     /** Both sides unware of each other */
                     Some(SendEvent(toBytes(HandshakeResponse(NONE, Some(ServerProtocol), Some(ServerHash)))))
@@ -466,6 +469,7 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
 
   override def uniqueId = 987643972L
 
+  override def bootstrapClassName = classOf[SingleClassServerSpecificAvroSerializer].getName
 
   override def handleNextEvent: PartialFunction[ReceivableEvent, Option[TriggerableEvent]] = {
     case StartEvent(n) =>
@@ -491,12 +495,16 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
             case Some(HandshakeResponse(CLIENT, Some(serverProtocol), Some(serverHash))) =>
               // do resolution with the server protocol, and cache
               activeCachedObj = tryResolveAndCache(schema, RecordClass, serverProtocol, serverHash)
-              activeCachedObj.map(_ => Success).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
+              activeCachedObj
+                .map(_ => Success)
+                .orElse(Some(Error("Remote side's schema unresolvable with this schema")))
             case Some(HandshakeResponse(CLIENT, _, _)) =>
               Some(Error("Remote side sent an improper HandshakeResponse with CLIENT match back"))
             case Some(HandshakeResponse(NONE, Some(serverProtocol), Some(serverHash))) =>
               activeCachedObj = tryResolveAndCache(schema, RecordClass, serverProtocol, serverHash)
-              activeCachedObj.map(_ => SendEvent(toBytes(HandshakeRequest(clientHash, Some(clientProtocol), serverHash, RecordClass.getName)))).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
+              activeCachedObj
+                .map(_ => SendEvent(toBytes(HandshakeRequest(clientHash, Some(clientProtocol), serverHash, RecordClass.getName))))
+                .orElse(Some(Error("Remote side's schema unresolvable with this schema")))
             case Some(HandshakeResponse(NONE, _, _)) =>
               Some(SendEvent(toBytes(HandshakeRequest(clientHash, Some(clientProtocol), activeServerHash.getOrElse(clientHash), RecordClass.getName))))
             case Some(r @ HandshakeResponse(_, _, _)) =>
