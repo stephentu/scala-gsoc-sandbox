@@ -138,21 +138,21 @@ class ScalaSpecificClassDatumReader[T](schema: Schema, clz: Class[T])
 
 
 trait AvroEnvelopeMessageCreator { this: Serializer => 
-  override type MyAsyncSend   = AvroAsyncSend
-  override type MySyncSend    = AvroSyncSend
-  override type MySyncReply   = AvroSyncReply
-  override type MyRemoteApply = AvroRemoteApply
+  //override type MyAsyncSend   = AvroAsyncSend
+  //override type MySyncSend    = AvroSyncSend
+  //override type MySyncReply   = AvroSyncReply
+  //override type MyRemoteApply = AvroRemoteApply
 
-  override def newAsyncSend(senderName: Option[Symbol], receiverName: Symbol, metaData: Array[Byte], data: Array[Byte]): AvroAsyncSend =
+  override def newAsyncSend(senderName: Option[Symbol], receiverName: Symbol, metaData: Array[Byte], data: Array[Byte]) =
     AvroAsyncSend(senderName.map(_.name), receiverName.name, Option(metaData), data)
 
-  override def newSyncSend(senderName: Symbol, receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol): AvroSyncSend =
+  override def newSyncSend(senderName: Symbol, receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol) =
     AvroSyncSend(senderName.name, receiverName.name, Option(metaData), data, session.name)
                                                                                    
-  override def newSyncReply(receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol): AvroSyncReply = 
+  override def newSyncReply(receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol) = 
     AvroSyncReply(receiverName.name, Option(metaData), data, session.name)
 
-  override def newRemoteApply(senderName: Symbol, receiverName: Symbol, rfun: RemoteFunction): AvroRemoteApply = {
+  override def newRemoteApply(senderName: Symbol, receiverName: Symbol, rfun: RemoteFunction) = {
     import AvroRemoteFunction._
     val (funid, reason) = remoteFunctionToInt(rfun)
     AvroRemoteApply(senderName.name, receiverName.name, funid, reason)
@@ -160,13 +160,13 @@ trait AvroEnvelopeMessageCreator { this: Serializer =>
 }
 
 trait AvroControllerMessageCreator { this: Serializer =>
-  override type MyRemoteStartInvoke          = AvroRemoteStartInvoke
-  override type MyRemoteStartInvokeAndListen = AvroRemoteStartInvokeAndListen
+  //override type MyRemoteStartInvoke          = AvroRemoteStartInvoke
+  //override type MyRemoteStartInvokeAndListen = AvroRemoteStartInvokeAndListen
 
-  override def newRemoteStartInvoke(actorClass: String): AvroRemoteStartInvoke = 
+  override def newRemoteStartInvoke(actorClass: String) = 
     AvroRemoteStartInvoke(actorClass)
 
-  override def newRemoteStartInvokeAndListen(actorClass: String, port: Int, name: Symbol): AvroRemoteStartInvokeAndListen =
+  override def newRemoteStartInvokeAndListen(actorClass: String, port: Int, name: Symbol) =
     AvroRemoteStartInvokeAndListen(actorClass, port, name.name)
 }
 

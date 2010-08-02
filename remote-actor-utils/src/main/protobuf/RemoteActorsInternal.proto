@@ -1,33 +1,31 @@
 package remote_actors.protobuf;
 
-message PBufNode {
-  required string address = 1;
-  required int32  port    = 2;
+message PBufSend {
+  required PBufSendType sendType     = 1;
+  optional string       senderName   = 2;
+  required string       receiverName = 3;
+  optional bytes        metaData     = 4;
+  required bytes        data         = 5;
+  optional string       session      = 6;
+
+  enum PBufSendType {
+    ASYNC_SEND = 1;
+    SYNC_SEND  = 2;
+    SYNC_REPLY = 3;
+  }
 }
 
-message PBufLocator {
-  required PBufNode node = 1;
-  required string   name = 2;
-}
-
-message PBufNamedSend {
-  required PBufLocator senderLoc   = 1;
-  required PBufLocator receiverLoc = 2;
-  optional bytes       metaData    = 3;
-  required bytes       data        = 4;
-  required string      session     = 5;
-}
-
-enum PBufServiceMode {
-  BLOCKING     = 0;
-  NON_BLOCKING = 1;
-}
-
-message PBufProxy {
-  required PBufNode        remoteNode          = 1;
-  required PBufServiceMode mode                = 2;
-  required string          serializerClassName = 3;
-  required string          name                = 4;
+message PBufRemoteApply {
+  required string                 senderName   = 1;
+  required string                 receiverName = 2;
+  required PBufRemoteFunctionType functionType = 3;
+  optional string                 reason       = 4;
+  
+  enum PBufRemoteFunctionType { 
+    LINK_FUN   = 1;
+    UNLINK_FUN = 2;
+    EXIT_FUN   = 3;
+  }
 }
 
 message PBufRemoteStartInvoke {
@@ -35,8 +33,7 @@ message PBufRemoteStartInvoke {
 }
 
 message PBufRemoteStartInvokeAndListen {
-  required string          actorClass = 1;
-  required int32           port       = 2;
-  required string          name       = 3;
-  required PBufServiceMode mode       = 4;
+  required string actorClass = 1;
+  required int32  port       = 2;
+  required string name       = 3;
 }
