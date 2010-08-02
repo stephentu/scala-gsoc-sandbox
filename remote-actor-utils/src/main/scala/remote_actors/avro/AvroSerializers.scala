@@ -110,7 +110,9 @@ object AvroRemoteFunction {
 case class AvroRemoteApply(var _senderName: String,
                            var _receiverName: String,
                            var _function: Int,
-                           var _reason: Option[String]) extends RemoteApply with AvroRecord {
+                           var _reason: Option[String]) extends RemoteApply 
+                                                        with    AvroMessage
+                                                        with    AvroRecord {
   import AvroRemoteFunction._
   override def senderName   = Symbol(_senderName)
   override def receiverName = Symbol(_receiverName)
@@ -126,7 +128,8 @@ class ScalaSpecificDatumReader[T](schema: Schema)(implicit m: Manifest[T])
   }
 }
 
-class ScalaSpecificClassDatumReader[T](schema: Schema, clz: Class[T]) extends SpecificDatumReader[T](schema) {
+class ScalaSpecificClassDatumReader[T](schema: Schema, clz: Class[T]) 
+  extends SpecificDatumReader[T](schema) {
   override def newRecord(old: AnyRef, schema: Schema): AnyRef = {
     if ((old ne null) && clz.isInstance(old)) old
     else super.newRecord(old, schema)
