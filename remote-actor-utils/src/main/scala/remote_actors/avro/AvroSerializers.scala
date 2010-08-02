@@ -9,19 +9,24 @@ import io._
 import specific._
 
 import com.googlecode.avro.marker._
-import com.googlecode.avro.annotations._
+import com.googlecode.avro.annotation._
 
 import scala.actors._
 import Actor._
 import remote._
 import RemoteActor._
 
+import scala.collection.mutable.HashMap
+
+import java.math.BigInteger
+import java.security.MessageDigest
+
 abstract class HasMultiClassAvroSerializer extends Configuration { 
   override def newSerializer() = new MultiClassSpecificAvroSerializer
 }
 
 abstract class HasSingleClassAvroSerializer[R <: SpecificRecord : Manifest] extends Configuration { 
-  override def newSerializer() = new SingleClassSpecificAvroSerializer[R]
+  override def newSerializer() = new SingleClassClientSpecificAvroSerializer[R]
 }
 
 @AvroUnion sealed trait AvroMessage
@@ -35,8 +40,8 @@ case class AvroAsyncSend(var _senderName: Option[String],
                          var _data: Array[Byte]) extends AsyncSend 
                                                  with    AvroMessage
                                                  with    AvroRecord {
-  override def senderName   = _senderName
-  override def receiverName = _receiverName
+  override def senderName   = _senderName.map(s => Symbol(s))
+  override def receiverName = Symbol(_receiverName)
   override def metaData     = _metaData.orNull
   override def data         = _data
 }
@@ -49,8 +54,8 @@ case class AvroSyncSend(var _senderName: String,
                         var _session: String) extends SyncSend 
                                               with    AvroMessage
                                               with    AvroRecord {
-  override def senderName   = _senderName
-  override def receiverName = _receiverName
+  override def senderName   = Symbol(_senderName)
+  override def receiverName = Symbol(_receiverName)
   override def metaData     = _metaData.orNull
   override def data         = _data
   override def session      = Symbol(_session)
@@ -62,7 +67,7 @@ case class AvroSyncReply(var _receiverName: String,
                          var _session: String) extends SyncReply 
                                                with    AvroMessage
                                                with    AvroRecord {
-  override def receiverName = _receiverName
+  override def receiverName = Symbol(_receiverName)
   override def metaData     = _metaData.orNull
   override def data         = _data
   override def session      = Symbol(_session)
@@ -102,13 +107,13 @@ object AvroRemoteFunction {
   }
 }
 
-case class AvroRemoteApply(var _senderLoc: AvroLocator,
-                           var _receiverLoc: AvroLocator,
+case class AvroRemoteApply(var _senderName: String,
+                           var _receiverName: String,
                            var _function: Int,
                            var _reason: Option[String]) extends RemoteApply with AvroRecord {
   import AvroRemoteFunction._
-  override def senderLoc   = _senderLoc
-  override def receiverLoc = _receiverLoc
+  override def senderName   = Symbol(_senderName)
+  override def receiverName = Symbol(_receiverName)
   override def function    = intToRemoteFunction(_function, _reason) 
 }
 
@@ -136,26 +141,24 @@ trait AvroEnvelopeMessageCreator { this: Serializer =>
   override type MyRemoteApply = AvroRemoteApply
 
   override def newAsyncSend(senderName: Option[Symbol], receiverName: Symbol, metaData: Array[Byte], data: Array[Byte]): AvroAsyncSend =
-    AvroAsyncSend(senderName, receiverName, metaData, data)
+    AvroAsyncSend(senderName.map(_.name), receiverName.name, Option(metaData), data)
 
   override def newSyncSend(senderName: Symbol, receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol): AvroSyncSend =
-    AvroSyncSend(senderName, receiverName, metaData, data, session)
+    AvroSyncSend(senderName.name, receiverName.name, Option(metaData), data, session.name)
                                                                                    
   override def newSyncReply(receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol): AvroSyncReply = 
-    AvroSyncReply(receiverName, metaData, data, session)
+    AvroSyncReply(receiverName.name, Option(metaData), data, session.name)
 
-  override def newRemoteApply(senderLoc: AvroLocator, receiverLoc: AvroLocator, rfun: RemoteFunction): AvroRemoteApply = {
+  override def newRemoteApply(senderName: Symbol, receiverName: Symbol, rfun: RemoteFunction): AvroRemoteApply = {
     import AvroRemoteFunction._
     val (funid, reason) = remoteFunctionToInt(rfun)
-    AvroRemoteApply(senderLoc, receiverLoc, funid, reason)
+    AvroRemoteApply(senderName.name, receiverName.name, funid, reason)
   }
 }
 
 trait AvroControllerMessageCreator { this: Serializer =>
   override type MyRemoteStartInvoke          = AvroRemoteStartInvoke
   override type MyRemoteStartInvokeAndListen = AvroRemoteStartInvokeAndListen
-
-  import AvroServiceMode._
 
   override def newRemoteStartInvoke(actorClass: String): AvroRemoteStartInvoke = 
     AvroRemoteStartInvoke(actorClass)
@@ -184,13 +187,13 @@ abstract class BasicSpecificAvroSerializer
 
   override final def serialize(message: AnyRef): Array[Byte] = message match {
     case a: AvroMessage    => toBytes(AvroContainer(a))
-    case s: SpecificRecord => doDeserialize(s)
+    case s: SpecificRecord => doSerialize(s)
     case _ => throw new IllegalArgumentException("Cannot serialize message: " + message)
   }
 
   protected def handleMetaData(metaData: Option[Array[Byte]]): Class[_] = metaData match {
     case Some(bytes) => 
-      decodeClassName(bytes).getOrElse(throw new IllegalArgumentException("Could not interpret metdata", e))
+      decodeClassName(bytes).getOrElse(throw new IllegalArgumentException("Could not interpret metdata"))
     case None        => 
       // if no metadata given, its of type AvroMessage
       AvroMessageClz
@@ -201,6 +204,7 @@ abstract class BasicSpecificAvroSerializer
       Some(Class.forName(name))
     } catch {
       case e: ClassNotFoundException =>
+        Debug.error(this + ": could not find class: " + name)
         None
     }
   }
@@ -217,8 +221,8 @@ abstract class BasicSpecificAvroSerializer
         c.msg
       case e if (classOf[SpecificRecord].isAssignableFrom(e)) =>
         doDeserialize(e.asInstanceOf[Class[SpecificRecord]], data)
-      case _ =>
-        throw new IllegalArgumentException("Don't know how to deserialize message of class " + clz.getName)
+      case e =>
+        throw new IllegalArgumentException("Don't know how to deserialize message of class " + e.getName)
     }
 
 
@@ -265,7 +269,7 @@ object HandshakeResponse {
   final val NONE   = 0x3
 }
 
-case class HandshakeResponse(var match: Int,
+case class HandshakeResponse(var _match: Int,
                              var serverProtocol: Option[String],
                              var serverHash: Option[Array[Byte]]) extends AvroRecord
 
@@ -317,7 +321,7 @@ abstract class SingleClassSpecificAvroSerializer extends BasicSpecificAvroSerial
   protected def tryResolve(mySchema: Schema, theirSchema: Schema): Option[AnyRef] = {
     try {
       resolvingDecoderLock.synchronized {
-        Some(ResolvingDecoder.resolve(thierSchema, mySchema)) /** THEY are the writer, I am the reader */
+        Some(ResolvingDecoder.resolve(theirSchema, mySchema)) /** THEY are the writer, I am the reader */
       }
     } catch {
       case e: Exception =>
@@ -327,7 +331,7 @@ abstract class SingleClassSpecificAvroSerializer extends BasicSpecificAvroSerial
     }
   }
 
-  protected def tryResolveAndCache(mySchema: String, myRecordClass: Class[_], remoteProtocol: String, remoteHash: Array[Byte]): Option[AnyRef] = {
+  protected def tryResolveAndCache(mySchema: Schema, myRecordClass: Class[_], remoteProtocol: String, remoteHash: Array[Byte]): Option[AnyRef] = {
     val retVal = tryResolve(mySchema, Schema.parse(remoteProtocol)) 
     retVal.foreach(obj => cache.synchronized {
       cache += myRecordClass -> (remoteHash, obj)
@@ -343,6 +347,8 @@ abstract class SingleClassSpecificAvroSerializer extends BasicSpecificAvroSerial
 class SingleClassServerSpecificAvroSerializer
   extends SingleClassSpecificAvroSerializer {
 
+  override def uniqueId = 7297271L
+
   import BasicSpecificAvroSerializer._
   import SingleClassSpecificAvroSerializer._
   import HandshakeResponse._
@@ -352,8 +358,8 @@ class SingleClassServerSpecificAvroSerializer
   private var RecordClass: Class[SpecificRecord] = _
 
   private lazy val Schema         = RecordClass.newInstance.getSchema
-  private lazy val ServerHash     = md5(Schema)
   private lazy val ServerProtocol = Schema.toString
+  private lazy val ServerHash     = md5(ServerProtocol)
 
   override def handleNextEvent: PartialFunction[ReceivableEvent, Option[TriggerableEvent]] = {
     case StartEvent(n) =>
@@ -361,8 +367,8 @@ class SingleClassServerSpecificAvroSerializer
       None
     case RecvEvent(b) => 
       b match {
-        case _: Array[Byte] =>
-          tryDecodeRequest(b) match {
+        case bytes: Array[Byte] =>
+          tryDecodeRequest(bytes) match {
             case Some(HandshakeRequest(clientHash, None, serverHash, className)) =>
               decodeClassName(className) match {
                 case Some(clz) if (classOf[SpecificRecord].isAssignableFrom(clz))  =>
@@ -372,7 +378,7 @@ class SingleClassServerSpecificAvroSerializer
                   val serverAware = hashEq || cache.synchronized {
                     cache.get(clz) match {
                       case Some((clientHash, clientObj)) =>
-                        activeCachedObj  = Some(cachedObj)
+                        activeCachedObj = Some(clientObj)
                         true
                       case None => false
                     }
@@ -393,8 +399,8 @@ class SingleClassServerSpecificAvroSerializer
               }
             case Some(HandshakeRequest(clientHash, Some(clientProtocol), serverHash, className)) =>
               assert(RecordClass ne null)
-              activeCacheObj = tryResolveAndCache(Schema, RecordClass, clientProtocol, clientCache)
-              activeCacheObj.map(_ => SendEvent(toBytes(HandshakeRequest(BOTH, None, None)))).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
+              activeCachedObj = tryResolveAndCache(Schema, RecordClass, clientProtocol, clientHash)
+              activeCachedObj.map(_ => SendEvent(toBytes(HandshakeResponse(BOTH, None, None)))).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
             case None =>
               Some(Error("Remote side did not send a proper HandshakeRequest"))
           }
@@ -404,7 +410,7 @@ class SingleClassServerSpecificAvroSerializer
   }
 
   override def doSerialize(message: SpecificRecord) = message.getClass match {
-    case RecordClass => toBytes(message.asInstanceOf[R])
+    case _ if (message.getClass == RecordClass) => toBytes(message)
     case e => throw new IllegalArgumentException("Don't know how to serializer message " + e + " of class " + e.getName)
   }
 
@@ -425,7 +431,7 @@ class SingleClassServerSpecificAvroSerializer
     case _              => Some(FlagMessage)
   }
 
-  override def handleMetaData(metaData: Option[Array[Byte]]) = {
+  override def handleMetaData(metaData: Option[Array[Byte]]) = metaData match {
     case Some(b) if (java.util.Arrays.equals(b, FlagMessage)) =>
       RecordClass
     case Some(_) =>
@@ -435,8 +441,8 @@ class SingleClassServerSpecificAvroSerializer
   }
 
   override def doDeserialize(clz: Class[SpecificRecord], message: Array[Byte]): AnyRef = clz match {
-    case RecordClass => 
-      activeCacheObj.map(_ => fromBytesResolving(message)).getOrElse(fromBytes[R](message, RecordClass))
+    case _ if (clz == RecordClass) => 
+      activeCachedObj.map(_ => fromBytesResolving(message)).getOrElse(fromBytes(message, RecordClass))
     case _ => 
       throw new IllegalArgumentException("Don't know how to deserialize message of class " + clz.getName)
   }
@@ -444,7 +450,7 @@ class SingleClassServerSpecificAvroSerializer
 }
 
 class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: Manifest[R]) 
-  extends BasicSpecificAvroSerializer {
+  extends SingleClassSpecificAvroSerializer {
 
   import BasicSpecificAvroSerializer._
   import SingleClassSpecificAvroSerializer._
@@ -452,9 +458,8 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
 
   private val RecordClass         = m.erasure.asInstanceOf[Class[R]]
   private val schema              = RecordClass.newInstance.getSchema
-  private lazy val clientHash     = md5(schema)
   private lazy val clientProtocol = schema.toString
-
+  private lazy val clientHash     = md5(clientProtocol)
 
   private var activeCachedObj: Option[AnyRef] = None
   private var activeServerHash: Option[Array[Byte]] = None
@@ -479,22 +484,22 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
       }
     case RecvEvent(b) =>
       b match {
-        case _: Array[Byte] =>
-          tryDecodeResponse(b) match {
+        case bytes: Array[Byte] =>
+          tryDecodeResponse(bytes) match {
             case Some(HandshakeResponse(BOTH, _, _)) =>
               Some(Success)
             case Some(HandshakeResponse(CLIENT, Some(serverProtocol), Some(serverHash))) =>
               // do resolution with the server protocol, and cache
-              activeCacheObj = tryResolveAndCache(schema, RecordClass, serverProtocol, serverHash)
-              activeCacheObj.map(_ => Success).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
+              activeCachedObj = tryResolveAndCache(schema, RecordClass, serverProtocol, serverHash)
+              activeCachedObj.map(_ => Success).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
             case Some(HandshakeResponse(CLIENT, _, _)) =>
               Some(Error("Remote side sent an improper HandshakeResponse with CLIENT match back"))
             case Some(HandshakeResponse(NONE, Some(serverProtocol), Some(serverHash))) =>
-              activeCacheObj = tryResolveAndCache(schema, RecordClass, serverProtocol, serverHash)
-              activeCacheObj.map(_ => SendEvent(toBytes(HandshakeRequest(clientHash, Some(clientProtocol), serverHash, RecordClass.getName)))).orElse(Error("Remote side's schema unresolvable with this schema"))
-            case Some(HandshakeResponse(NONE, _, _) =>
+              activeCachedObj = tryResolveAndCache(schema, RecordClass, serverProtocol, serverHash)
+              activeCachedObj.map(_ => SendEvent(toBytes(HandshakeRequest(clientHash, Some(clientProtocol), serverHash, RecordClass.getName)))).orElse(Some(Error("Remote side's schema unresolvable with this schema")))
+            case Some(HandshakeResponse(NONE, _, _)) =>
               Some(SendEvent(toBytes(HandshakeRequest(clientHash, Some(clientProtocol), activeServerHash.getOrElse(clientHash), RecordClass.getName))))
-            case Some(r @ HandshakeResponse(_, _, _) =>
+            case Some(r @ HandshakeResponse(_, _, _)) =>
               Some(Error("Invalid handshake response: " + r))
             case None =>
               Some(Error("Remote side did not send a proper HandshakeResponse back"))
@@ -527,7 +532,7 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
     case _              => Some(FlagMessage)
   }
 
-  override def handleMetaData(metaData: Option[Array[Byte]]) = {
+  override def handleMetaData(metaData: Option[Array[Byte]]) = metaData match {
     case Some(b) if (java.util.Arrays.equals(b, FlagMessage)) =>
       RecordClass
     case Some(_) =>
@@ -537,8 +542,8 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
   }
 
   override def doDeserialize(clz: Class[SpecificRecord], message: Array[Byte]): AnyRef = clz match {
-    case RecordClass => 
-      activeCacheObj.map(_ => fromBytesResolving(message)).getOrElse(fromBytes[R](message, RecordClass))
+    case _ if (clz == RecordClass) => 
+      activeCachedObj.map(_ => fromBytesResolving(message)).getOrElse(fromBytes[R](message, RecordClass))
     case _ => 
       throw new IllegalArgumentException("Don't know how to deserialize message of class " + clz.getName)
   }
