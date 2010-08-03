@@ -152,12 +152,12 @@ trait ProtobufEnvelopeMessageCreator { _: Serializer =>
 
   override def newRemoteApply(senderName: Symbol, receiverName: Symbol, rfun: RemoteFunction) = {
     val (t, r) = remoteFunctionToTuple(rfun)
-    PBufRemoteApply.newBuilder()
+    val builder = PBufRemoteApply.newBuilder()
       .setSenderName(senderName)
       .setReceiverName(receiverName)
       .setFunctionType(t)
-      .setReason(r.orNull)
-      .build()
+    r.foreach(s => builder.setReason(s))
+    builder.build()
   }
 
 }
