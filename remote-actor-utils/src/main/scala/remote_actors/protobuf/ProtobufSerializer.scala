@@ -39,7 +39,7 @@ class ProtobufSerializer
 
   import PBufSend.PBufSendType._
 
-  override def uniqueId = 894256467L
+  override val uniqueId = 894256467L
 
   override def serializeMetaData(message: AnyRef) = 
     Some(serializeClassName(message))

@@ -16,7 +16,7 @@ class GZipClientSerializer(override val underlying: Serializer)
 
   import GZipBaseSerializer._
 
-  override def uniqueId = 2372769496L
+  override val uniqueId = 2372769496L
 
   override def bootstrapClassName = classOf[GZipServerSerializer].getName
 
@@ -44,7 +44,7 @@ class GZipServerSerializer extends GZipBaseSerializer {
 
   import GZipBaseSerializer._
 
-  override def uniqueId = 3699026858L
+  override val uniqueId = 3699026858L
 
   override def bootstrapClassName = 
     throw new IllegalStateException("bootstrapClassName should never be called on the server side")
@@ -96,7 +96,7 @@ object GZipBaseSerializer {
 
 abstract class GZipBaseSerializer extends Serializer {
 
-  override def isHandshaking = true
+  override val isHandshaking = true
 
   protected def underlying: Serializer
 

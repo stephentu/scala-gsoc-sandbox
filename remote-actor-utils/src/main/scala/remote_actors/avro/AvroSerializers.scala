@@ -176,6 +176,7 @@ object BasicSpecificAvroSerializer {
 
 abstract class BasicSpecificAvroSerializer 
   extends Serializer
+  with    SpecificRecordSerializer
   with    AvroEnvelopeMessageCreator
   with    AvroControllerMessageCreator {
 
@@ -228,7 +229,9 @@ abstract class BasicSpecificAvroSerializer
         throw new IllegalArgumentException("Don't know how to deserialize message of class " + e.getName)
     }
 
+}
 
+trait SpecificRecordSerializer { 
   protected def toBytes[T <: SpecificRecord](record: T): Array[Byte] = {
     val writer  = new SpecificDatumWriter[T](record.getSchema)
     val buffer  = new ByteArrayOutputStream(1024)
@@ -237,11 +240,11 @@ abstract class BasicSpecificAvroSerializer
     buffer.toByteArray
   }
 
-  protected def fromBytes[T <: SpecificRecord](message: Array[Byte], srClz: Class[T])(implicit m: Manifest[T]): T = {
+  protected def fromBytes[T <: SpecificRecord](message: Array[Byte], srClz: Class[T]): T = {
     val newInstance    = srClz.newInstance
     val decoderFactory = new DecoderFactory
     val reader         = new ScalaSpecificDatumReader[T](newInstance.getSchema)
-    val inStream       = decoderFactory.createBinaryDecoder(message, null)
+    val inStream       = decoderFactory.createBinaryDecoder(new ByteArrayInputStream(message), null)
     reader.read(newInstance, inStream)
     newInstance
   }
@@ -252,7 +255,7 @@ class MultiClassSpecificAvroSerializer
   extends BasicSpecificAvroSerializer 
   with    IdResolvingSerializer {
 
-  override def uniqueId = 3761204115L
+  override val uniqueId = 3761204115L
 
   override def doSerialize(message: SpecificRecord): Array[Byte] = toBytes(message)
 
@@ -288,7 +291,7 @@ object SingleClassSpecificAvroSerializer {
 abstract class SingleClassSpecificAvroSerializer extends BasicSpecificAvroSerializer {
   import SingleClassSpecificAvroSerializer._
 
-  override def isHandshaking = true
+  override val isHandshaking = true
 
   protected var node: Option[Node] = None
 
@@ -350,7 +353,7 @@ abstract class SingleClassSpecificAvroSerializer extends BasicSpecificAvroSerial
 class SingleClassServerSpecificAvroSerializer
   extends SingleClassSpecificAvroSerializer {
 
-  override def uniqueId = 7297271L
+  override val uniqueId = 7297271L
 
   import BasicSpecificAvroSerializer._
   import SingleClassSpecificAvroSerializer._
@@ -470,7 +473,7 @@ class SingleClassClientSpecificAvroSerializer[R <: SpecificRecord](implicit m: M
   private var activeCachedObj: Option[AnyRef] = None
   private var activeServerHash: Option[Array[Byte]] = None
 
-  override def uniqueId = 987643972L
+  override val uniqueId = 987643972L
 
   override def bootstrapClassName = classOf[SingleClassServerSpecificAvroSerializer].getName
 
