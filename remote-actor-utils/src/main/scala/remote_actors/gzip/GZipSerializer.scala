@@ -142,30 +142,36 @@ abstract class GZipBaseSerializer extends Serializer {
       Some(SendEvent(underlying.bootstrapClassName.getBytes))
   }
 
-  override def newAsyncSend(senderName: Option[Symbol], receiverName: Symbol, metaData: Array[Byte], data: Array[Byte]) = 
-    underlying.newAsyncSend(senderName, receiverName, metaData, data)
+  override def writeAsyncSend(outputStream: OutputStream, senderName: String, receiverName: String, message: AnyRef) {
+    val gos = new GZIPOutputStream(outputStream)
+    underlying.writeAsyncSend(gos, senderName, receiverName, message)
+    gos.finish()
+  }
 
-  override def newSyncSend(senderName: Symbol, receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol) =
-    underlying.newSyncSend(senderName, receiverName, metaData, data, session)
+  override def writeSyncSend(outputStream: OutputStream, senderName: String, receiverName: String, message: AnyRef, session: String) {
+    val gos = new GZIPOutputStream(outputStream)
+    underlying.writeSyncSend(gos, senderName, receiverName, message, session)
+    gos.finish()
+  }
 
-  override def newSyncReply(receiverName: Symbol, metaData: Array[Byte], data: Array[Byte], session: Symbol) = 
-    underlying.newSyncReply(receiverName, metaData, data, session)
+  override def writeSyncReply(outputStream: OutputStream, receiverName: String, message: AnyRef, session: String) {
+    val gos = new GZIPOutputStream(outputStream)
+    underlying.writeSyncReply(gos, receiverName, message, session)
+    gos.finish()
+  }
 
-  override def newRemoteApply(senderName: Symbol, receiverName: Symbol, rfun: RemoteFunction) = 
-    underlying.newRemoteApply(senderName, receiverName, rfun)
+  override def writeRemoteApply(outputStream: OutputStream, senderName: String, receiverName: String, rfun: RemoteFunction) {
+    val gos = new GZIPOutputStream(outputStream)
+    underlying.writeRemoteApply(gos, senderName, receiverName, rfun)
+    gos.finish()
+  }
+
+  override def read(bytes: Array[Byte]) =
+    underlying.read(uncompress(bytes))
 
   override def newRemoteStartInvoke(actorClass: String) = 
     underlying.newRemoteStartInvoke(actorClass)
 
-  override def newRemoteStartInvokeAndListen(actorClass: String, port: Int, name: Symbol) =
+  override def newRemoteStartInvokeAndListen(actorClass: String, port: Int, name: String) =
     underlying.newRemoteStartInvokeAndListen(actorClass, port, name)
-
-  override def serializeMetaData(message: AnyRef) = 
-    underlying.serializeMetaData(message) /** No compression on the metadata (since it's usually small) */
-
-  override def serialize(message: AnyRef) =
-    compress(underlying.serialize(message))
-
-  override def deserialize(metaData: Option[Array[Byte]], data: Array[Byte]) = 
-    underlying.deserialize(metaData, uncompress(data))
 }
