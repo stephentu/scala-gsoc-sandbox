@@ -58,11 +58,8 @@ class NettyByteConnection(chan: Channel) extends ByteConnection {
   override def localNode = throw new RuntimeException("UNIMPLEMENTED")
   override def isEphemeral = throw new RuntimeException("UNIMPLEMENTED")
   override def mode = throw new RuntimeException("UNIMPLEMENTED")
-  override def send(data: Array[Byte]) {
-    chan.write(ChannelBuffers.wrappedBuffer(data))
-  }
-  override def send(data0: Array[Byte], data1: Array[Byte]) {
-    throw new RuntimeException("UNIMPLEMENTED")
+  override def send(seq: ByteSequence) {
+    chan.write(ChannelBuffers.copiedBuffer(seq.bytes, seq.offset, seq.length))
   }
   override def doTerminateImpl(isBottom: Boolean) {
     chan.close()

@@ -16,7 +16,8 @@ object TestUtils {
 
   def javaSerializationMessageSize(o: AnyRef): Long = {
     val s = new JavaSerializer
-    s.serialize(o).length
+    //s.serialize(o).length
+    -1
   }
 
   def newMessage(numBytes: Int): Array[Byte] = {

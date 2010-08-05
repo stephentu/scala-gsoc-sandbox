@@ -56,7 +56,7 @@ object ProviderTest {
     }
 
     val recvCallback = (conn: ByteConnection, msg: Array[Byte]) => {
-      conn.send(msg)
+      conn.send(new ByteSequence(msg))
     }
 
     val syncVar = new SyncVar[Boolean]
@@ -110,7 +110,7 @@ object ProviderTest {
       while (System.currentTimeMillis < endTime) {
         val conn = connect(nextNode())
         syncVar.unset()
-        conn.send(Message)
+        conn.send(new ByteSequence(Message))
         numSent += 1
         syncVar.get
         numRecv += 1

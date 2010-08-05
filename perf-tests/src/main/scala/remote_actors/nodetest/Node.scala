@@ -99,8 +99,8 @@ object Node {
                                                                  false))
 
     implicit object cfg extends Configuration with HasJavaSerializer {
-      override def aliveMode  = mode
-      override def selectMode = mode
+      override val aliveMode  = mode
+      override val selectMode = mode
     }
 
     class RunActor(id: Int, writer: PrintWriter) extends Actor {

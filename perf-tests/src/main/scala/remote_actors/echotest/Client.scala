@@ -78,8 +78,8 @@ case object STOP
 class Run(runId: Int, host: String, port: Int, mode: ServiceMode.Value, numActors: Int, runTime: Int) {
 
   implicit object cfg extends Configuration with HasJavaSerializer {
-    override def aliveMode  = mode
-    override def selectMode = mode
+    override val aliveMode  = mode
+    override val selectMode = mode
   }
 
   class RunActor(id: Int, writer: PrintWriter, messageSize: Int, actualMsgSize: Long, message: Array[Byte], messageCallback: () => Unit, finishCallback: () => Unit, errorCallback: Exception => Unit) extends Actor {

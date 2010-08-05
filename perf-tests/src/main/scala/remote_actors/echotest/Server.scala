@@ -13,8 +13,8 @@ object Server {
     val port = parseOptIntDefault(args, "--port=", 9000)
     val mode = if (containsOpt(args, "--nio")) ServiceMode.NonBlocking else ServiceMode.Blocking
     implicit object cfg extends Configuration with HasJavaSerializer {
-      override def aliveMode  = mode
-      override def selectMode = mode
+      override val aliveMode  = mode
+      override val selectMode = mode
     }
     actor {
       alive(port)
