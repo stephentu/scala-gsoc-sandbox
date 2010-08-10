@@ -7,7 +7,7 @@ import TestUtils._
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor._
+import RemoteActor.{actor => remoteActor, _}
 
 import java.util.concurrent._
 import java.util.concurrent.atomic._
@@ -24,6 +24,13 @@ case object StopAnnouncer
 
 case class Results(runId: Int, msgsSent: Int, msgsRecv: Int, numTimeouts: Int)
 
+object Log {
+    var debug = false
+    def debug(s: => String) {
+        if (debug) println(s)
+    }
+}
+
 object Node {
 
   val LocalHostName = InetAddress.getLocalHost.getCanonicalHostName
@@ -39,10 +46,21 @@ object Node {
     val nodes = parseOptListDefault(args, "--nodes=", DefaultNodes)
     val delayTime = parseOptIntDefault(args, "--delaytime=", 10000) // wait 10 seconds before starting
 
+    val ExpRootDir = 
+        if (containsOpt(args, "--expdir=")) Some(new File(parseOptString(args, "--expdir=")))
+        else None
+      
     val expname = parseOptStringDefault(args, "--expname=", "results_nodetest")
 
     val ExpId = System.currentTimeMillis
-    val ExpDir = new File(List(expname, ExpId).mkString("_"))
+    val ExpDir = ExpRootDir match {
+      case Some(rootDir) =>
+        new File(rootDir, List(expname, ExpId).mkString("_"))
+      case None =>
+        new File(List(expname, ExpId).mkString("_"))
+    }
+
+    ExpDir.mkdirs()
 
     println("---------------------------------------------------------------------")
     println("Localhost name: " + LocalHostName)
@@ -56,7 +74,6 @@ object Node {
     println()
 
     
-    ExpDir.mkdirs()
 
     val run = new Run(delayTime, ExpDir, ports, mode, nodes.flatMap(h => ports.map(p => scala.actors.remote.Node(h, p).canonicalForm)).toArray, numActors, runTime)
     run.execute(numRuns)
@@ -81,10 +98,19 @@ object Node {
                                                                  0, 
                                                                  false))
 
+    implicit object cfg extends Configuration with HasJavaSerializer {
+      override val aliveMode  = mode
+      override val selectMode = mode
+    }
+
     class RunActor(id: Int, writer: PrintWriter) extends Actor {
       override def exceptionHandler: PartialFunction[Exception, Unit] = {
-        case e: Exception => e.printStackTrace()
+        case e: Exception => 
+          System.err.println(this + ": Caught exception: " + e.getMessage)
+          e.printStackTrace()
+          numExceptions += 1
       }
+      var numExceptions = 0
       val random = new scala.util.Random
       def nextNode() = {
         val idx = random.nextInt(nodes.length)
@@ -99,13 +125,16 @@ object Node {
       var msgsRecv = 0
       var runId = 0
       var numTimeouts = 0
+      val timeoutNodes = new ArrayBuffer[ToActor]
 
       override def toString = "<RunActor " + ThisSymbol + ">"
+
+      var lastMsg: NodeMessage = _
 
       private def sendNextMsg() {
         val nextN = nextNode()
         val nextSym = nextSymbol()
-        val server = select(nextN, nextSym, serviceMode = mode) // use java serialization
+        val server = select(nextN, nextSym)
         val msg = NodeMessage(message, 
                               System.nanoTime, 
                               FromActor(LocalHostName, ThisSymbol),
@@ -113,34 +142,49 @@ object Node {
                               runId, 
                               msgsSent, 
                               false)
-        Debug.info(this + ": Sending message: " + msg + " to actor: " + nextSym + " with proxy: " + server)
+        lastMsg = msg
+        Log.debug(this + ": Sending message: " + msg + " to actor: " + nextSym + " with proxy: " + server)
         server ! msg  
+        lastMsgSent = System.currentTimeMillis
         msgsSent += 1
       }
 
       var timer: Timer = _
-      var roundTripTimes: ArrayBuffer[Long] = _
+      val roundTripTimes: ArrayBuffer[Long] = new ArrayBuffer[Long] 
       var started = false
 
+      var lastMsgSent = System.currentTimeMillis
+      var timeoutLength = 5000 // 5 second timeout
+
       override def act() {
-        ports.foreach(port => alive(port, serviceMode = mode))
+        import scala.math.max
+        ports.foreach(port => alive(port))
         register(ThisSymbol, self)
         //println("actor " + id + " alive and registered on port " + port)
         loop {
-          reactWithin(5000) {
+          val waitTime = if (started)
+            max(0, (lastMsgSent + timeoutLength) - System.currentTimeMillis)
+          else Integer.MAX_VALUE
+          reactWithin(waitTime) {
             case START if (!started) =>
               timer = new Timer
-              roundTripTimes = new ArrayBuffer[Long](1024) // stored in NS
+              roundTripTimes.clear() // stored in NS
               runId += 1
               msgsSent = 0
               msgsRecv = 0
               numTimeouts = 0
+              timeoutNodes.clear()
               timer.start()
+              Log.debug(this + ": starting run " + runId)
               started = true
               sendNextMsg()
             case TIMEOUT if (started) =>
               numTimeouts += 1
+              timeoutNodes += lastMsg.toActor
+              Log.debug(this + ": TIMEOUT when started")
               sendNextMsg()
+            case TIMEOUT if (!started) =>
+              Log.debug(this + ": TIMEOUT, but not started")
             case m @ NodeMessage(recvMessage, 
                                  _, 
                                  FromActor(LocalHostName, ThisSymbol),
@@ -150,20 +194,20 @@ object Node {
                                  true) if (recvRunId == runId && recvI >= msgsRecv && started) =>
               if ((msgsRecv % 100) == 0 && !java.util.Arrays.equals(message, recvMessage))
                 System.err.println("WARNING: ARRAYS DO NOT MATCH") // validate every 100 messages
-              Debug.info(this + ": received resp to message " + recvI)
+              Log.debug(this + ": received resp to message " + recvI + " in run " + runId)
               roundTripTimes += m.timeElasped
               msgsRecv += 1
               sendNextMsg()
             case m @ NodeMessage(a0, a1, a2, ta @ ToActor(LocalHostName, ThisSymbol), a4, a5, false) => // always do the echo-ing
               val respMsg = NodeMessage(a0, a1, a2, ta, a4, a5, true)
-              Debug.info(this + ": echoing message: " + m + " with resp " + respMsg + " to sender: " + sender)
+              //Debug.info(this + ": echoing message: " + m + " with resp " + respMsg + " to sender: " + sender)
               sender ! respMsg 
             case m @ NodeMessage(_, _, _, _, _, _, true) if (started) =>
               // we've received a message which was echoed back to us, but we
               // did not send it out this round
               // most likely comes from previous rounds
-              //System.err.println(this + ": expecting: recvHostName: " + LocalHostName + ", runId: " + runId + ", recvId: " + id + ", recvI: " + msgsRecv)
-              //System.err.println("BUG: " + m)
+              Log.debug(this + ": expecting: recvHostName: " + LocalHostName + ", runId: " + runId + ", recvId: " + id + ", recvI: " + msgsRecv)
+              Log.debug("BUG: " + m)
             case STOP if (started) =>
               //println("actor " + id + " received STOP")
               // time is up
@@ -195,13 +239,18 @@ object Node {
                     <result unit="bytespersecond">{(actualMsgSize * stats.getN)/timeInSec}</result>
                     <result unit="messagespersecond">{stats.getN / timeInSec}</result>
                   </throughput>
+                  <timeouts>
+                    {timeoutNodes.map(t => <node>{t.machine}</node>)}
+                  </timeouts>
+                  <numexceptions>{numExceptions}</numexceptions>
                 </execution>
               writer.println(xml.toString)
               writer.flush()
+              lastMsg = null
               started = false
               sender ! Results(runId, msgsSent, msgsRecv, numTimeouts)               
             case e => 
-              //System.err.println(this + ": RECEIVED UNKNOWN MESSAGE: " + e + " from proxy: " + sender)
+              Log.debug(this + ": RECEIVED UNKNOWN MESSAGE: " + e + " from proxy: " + sender)
           }
         }
       }
@@ -219,7 +268,7 @@ object Node {
             <actorid>{id}</actorid>
             <runtime>{runTime}</runtime>
             <numruns>{numRuns}</numruns>
-            <nodes>{nodes.map(node => <node>{node.address + ":" + node.port}</node>)}</nodes>
+            <numnodes>{nodes.length}</numnodes>
             <messagepayloadsize units="bytes">{messageSize}</messagepayloadsize>
             <messagesize units="bytes">{actualMsgSize}</messagesize>
           </metadata>
@@ -234,11 +283,20 @@ object Node {
           <numactors>{numActors}</numactors>
           <runtime>{runTime}</runtime>
           <numruns>{numRuns}</numruns>
-          <nodes>{nodes.map(node => <node>{node.address + ":" + node.port}</node>)}</nodes>
+          <numnodes>{nodes.length}</numnodes>
           <messagepayloadsize units="bytes">{messageSize}</messagepayloadsize>
           <messagesize units="bytes">{actualMsgSize}</messagesize>
         </metadata>
       resultWriter.println(xml.toString)
+
+      val nodeWriter = new PrintWriter(new FileOutputStream(new File(ExpDir, "nodes.xml")))
+      val nodeXml =
+        <nodedata>
+          <numnodes>{nodes.length}</numnodes>
+          <nodes>{nodes.map(node => <node>{node.address + ":" + node.port}</node>)}</nodes>
+        </nodedata>
+      nodeWriter.println(nodeXml.toString)
+      nodeWriter.flush(); nodeWriter.close()
 
       val actors = (0 until numActors).map(id => {
           val writer = writers(id)
@@ -270,6 +328,8 @@ object Node {
       var numMessagesSent = 0
       var numMessagesRecv = 0
       var numTimeouts = 0
+
+
 
       var numInactiveActors = 0 // actors which recv 0 messages
       val latch = new CountDownLatch(numActors)

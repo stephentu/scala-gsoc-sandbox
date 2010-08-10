@@ -1,35 +1,6 @@
-package remote_actors
-package perftest
+package localhost.test
 
-import scala.actors.remote._
-
-import java.util.concurrent.atomic._
-
-object TestUtils {
-  private val idGen = new AtomicInteger
-  def newId() = idGen.getAndIncrement()
-
-  def nanoToSeconds(ns: Long): Double = ns / 1e9
-  def nanoToSeconds(ns: Double): Double = ns / 1e9
-  def nanoToMilliseconds(ns: Long): Double = ns / 1e6
-  def nanoToMilliseconds(ns: Double): Double = ns / 1e6
-
-  def javaSerializationMessageSize(o: AnyRef): Long = {
-    val s = new JavaSerializer
-    //s.serialize(o).length
-    -1
-  }
-
-  def newMessage(numBytes: Int): Array[Byte] = {
-    val b = new Array[Byte](numBytes)
-    var i = 0
-    while (i < b.length) {
-      b(i) = i.toByte // deliberate overflow, we don't really care here
-      i += 1
-    }
-    b
-  }
-
+object ParseOpt {
   def containsOpt(args: Array[String], opt: String) = args.filter(_.startsWith(opt)).size > 0
   def parseOptList(args: Array[String], opt: String): List[String] = 
     parseOptString(args, opt).split(",").toList

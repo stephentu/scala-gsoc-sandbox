@@ -5,15 +5,15 @@ case class Message(bytes: Array[Byte], timeCreated: Long) {
   def timeElasped = System.nanoTime - timeCreated
 }
 
-case class FromActor(machine: String, actorId: Symbol)
-case class ToActor(machine: String, actorId: Symbol)
+case class FromActor(val machine: String, val actorId: Symbol)
+case class ToActor(val machine: String, val actorId: Symbol)
 
-case class NodeMessage(bytes: Array[Byte], 
-                       timeCreated: Long, 
-                       fromActor: FromActor,
-                       toActor: ToActor,
-                       runId: Int, 
-                       msgId: Int, 
-                       hasEchoed: Boolean) {
+case class NodeMessage(val bytes: Array[Byte], 
+                       val timeCreated: Long, 
+                       val fromActor: FromActor,
+                       val toActor: ToActor,
+                       val runId: Int, 
+                       val msgId: Int, 
+                       val hasEchoed: Boolean) {
   def timeElasped = System.nanoTime - timeCreated
 }

@@ -1,0 +1,6 @@
+package remote_actors.protobuf.examples;
+
+message PBufExample {
+	required int32  i = 1;
+	required string s = 2;
+}
