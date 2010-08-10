@@ -1,7 +1,5 @@
-package remote_actors
-package providertest
-
-import scala.actors.remote._
+package scala.actors
+package remote
 
 import java.net._
 import java.util.concurrent._
@@ -58,7 +56,8 @@ class NettyByteConnection(chan: Channel) extends ByteConnection {
   override def localNode = throw new RuntimeException("UNIMPLEMENTED")
   override def isEphemeral = throw new RuntimeException("UNIMPLEMENTED")
   override def mode = throw new RuntimeException("UNIMPLEMENTED")
-  override def send(seq: ByteSequence) {
+  override def connectFuture = throw new RuntimeException("UNIMPLEMENTED")
+  override def send(seq: ByteSequence, ftch: Option[RFuture]) {
     chan.write(ChannelBuffers.copiedBuffer(seq.bytes, seq.offset, seq.length))
   }
   override def doTerminateImpl(isBottom: Boolean) {

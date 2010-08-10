@@ -9,7 +9,7 @@ import remote_actors.avro._
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor.{actor => remoteActor, _}
+import RemoteActor._
 
 object Client {
   val ByteArray = (0 to 8192).map(_.toByte).toArray
@@ -18,7 +18,7 @@ object Client {
       if (containsOpt(args, "--avro")) {
         println("Using AVRO")
         //new HasSingleClassAvroSerializer[TestMessage] with HasNonBlockingMode
-        new HasMultiClassAvroSerializer with HasNonBlockingMode
+        new HasMultiClassAvroSerializer with HasNonBlockingMode with HasAvroMessageCreator
       } else {
         println("Using JAVA")
         new DefaultNonBlockingConfiguration

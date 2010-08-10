@@ -7,7 +7,7 @@ import TestUtils._
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor.{actor => remoteActor, _}
+import RemoteActor._
 
 import java.util.concurrent._
 import java.util.concurrent.atomic._
@@ -98,7 +98,7 @@ object Node {
                                                                  0, 
                                                                  false))
 
-    implicit object cfg extends Configuration with HasJavaSerializer {
+    implicit object cfg extends DefaultConfiguration {
       override val aliveMode  = mode
       override val selectMode = mode
     }

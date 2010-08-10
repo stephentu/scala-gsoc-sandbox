@@ -1,5 +1,5 @@
-package remote_actors
-package providertest
+package scala.actors
+package remote
 
 import remote_actors.perftest._
 import TestUtils._
@@ -56,7 +56,7 @@ object ProviderTest {
     }
 
     val recvCallback = (conn: ByteConnection, msg: Array[Byte]) => {
-      conn.send(new ByteSequence(msg))
+      conn.send(new ByteSequence(msg), None)
     }
 
     val syncVar = new SyncVar[Boolean]
@@ -110,7 +110,7 @@ object ProviderTest {
       while (System.currentTimeMillis < endTime) {
         val conn = connect(nextNode())
         syncVar.unset()
-        conn.send(new ByteSequence(Message))
+        conn.send(new ByteSequence(Message), None)
         numSent += 1
         syncVar.get
         numRecv += 1

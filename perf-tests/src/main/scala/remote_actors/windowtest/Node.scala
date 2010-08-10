@@ -7,7 +7,7 @@ import TestUtils._
 import scala.actors._
 import Actor._
 import remote._
-import RemoteActor.{actor => remoteActor, _}
+import RemoteActor._
 
 import java.net._
 
