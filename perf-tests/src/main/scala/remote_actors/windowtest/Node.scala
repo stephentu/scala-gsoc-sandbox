@@ -20,7 +20,7 @@ case class WindowMessage(var i: Int, var b: Array[Byte])
 
 
 object Node {
-  val Bytes = (0 to 8192).map(_.toByte).toArray
+  val Bytes = (0 to 100).map(_.toByte).toArray
   val LocalHostName = InetAddress.getLocalHost.getCanonicalHostName
   def main(args: Array[String]) {
     val level = parseOptIntDefault(args, "--debug=", 1) 
@@ -33,8 +33,23 @@ object Node {
 
     implicit val config = 
       if (containsOpt(args, "--nio")) 
-        new DefaultNonBlockingConfiguration
-      else new DefaultConfiguration
+        new DefaultNonBlockingConfiguration {
+          override def newSerializer() = {
+            if (containsOpt(args, "--enhanced"))
+              new remote_actors.javaserializer.EnhancedJavaSerializer
+            else
+              new JavaSerializer
+          }
+        }
+      else new DefaultConfiguration {
+        override def newSerializer() = {
+          if (containsOpt(args, "--enhanced"))
+            new remote_actors.javaserializer.EnhancedJavaSerializer
+          else
+            new JavaSerializer
+        }
+      }
+
 
     remoteActor(16780, 'server) {
       loop {
