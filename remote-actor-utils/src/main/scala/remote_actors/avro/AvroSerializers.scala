@@ -224,17 +224,12 @@ abstract class BaseAvroSerializer extends Serializer {
     writeNKBytes(AvroRemoteApply(senderName, receiverName, funid, reason), outputStream)
   }
 
-  override def read(data: Array[Byte]) = {
-    Debug.info("read(): data.length = %d".format(data.length))
-    val bais = new ByteArrayInputStream(data)
-    Debug.info("read(): bais.available = %d".format(bais.available))
-    readNKBytes(bais) match {
+  override def read(data: InputStream) = {
+    readNKBytes(data) match {
       case m: AvroLocateRequest => m
       case m: AvroLocateResponse => m
       case m: AvroMessageCommand =>
-        Debug.info("Got AvroMessageCommand: " + m)
-        Debug.info("read(): bais.available = %d".format(bais.available))
-        val message = readBytes(m.className.map(c => Class.forName(c)), bais)
+        val message = readBytes(m.className.map(c => Class.forName(c)), data)
         m.toNetKernelMessage(message)
       case AvroRemoteApply(senderName, receiverName, funid, reason) =>
         DefaultRemoteApplyImpl(senderName, receiverName, intToRemoteFunction(funid, reason))

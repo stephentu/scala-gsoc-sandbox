@@ -30,33 +30,6 @@ class GZipSerializer(val underlying: Serializer) extends Serializer {
 
   override val isHandshaking = true
 
-  protected def compress(bytes: Array[Byte]): Array[Byte] = {
-    val baos = new ByteArrayOutputStream(bytes.length)
-    val gos  = new GZIPOutputStream(baos)
-    gos.write(bytes, 0, bytes.length)
-    gos.close()
-    baos.toByteArray
-  }
-
-  protected def uncompress(bytes: Array[Byte]): Array[Byte] = {
-    val bais = new ByteArrayInputStream(bytes)
-    val gis  = new GZIPInputStream(bais)
-    
-    val baos = new ByteArrayOutputStream
-    val buf  = new Array[Byte](1024)
-
-    var continue = true
-    while (continue) {
-      var bytesRead = gis.read(buf, 0, buf.length)
-      if (bytesRead == -1)
-        continue = false
-      else
-        baos.write(buf, 0, bytesRead)
-    }
-
-    baos.toByteArray
-  }
-
   override def writeLocateRequest(outputStream: OutputStream, sessionId: Long, receiverName: String) {
     val gos = new GZIPOutputStream(outputStream)
     underlying.writeLocateRequest(gos, sessionId, receiverName)
@@ -93,7 +66,7 @@ class GZipSerializer(val underlying: Serializer) extends Serializer {
     gos.finish()
   }
 
-  override def read(bytes: Array[Byte]) =
-    underlying.read(uncompress(bytes))
+  override def read(bytes: InputStream) =
+    underlying.read(new GZIPInputStream(bytes))
 
 }
